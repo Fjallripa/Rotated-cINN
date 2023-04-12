@@ -1,3 +1,7 @@
+# Model Training
+# ==============
+# run this script to train the model
+
 from time import time
 
 from tqdm import tqdm
@@ -9,9 +13,10 @@ import numpy as np
 import model
 import data
 
-device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 
-cinn = model.MNIST_cINN(5e-4)
+# Parameters
+device = 'cuda'  if torch.cuda.is_available() else  'cpu'
+cinn = model.MNIST_cINN(lr=5e-4)
 cinn.to(device)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(cinn.optimizer, milestones=[20, 40], gamma=0.1)
 
@@ -19,12 +24,24 @@ N_epochs = 60
 t_start = time()
 nll_mean = []
 
+
+# Main code
 print('Epoch\tBatch/Total \tTime \tNLL train\tNLL val\tLR')
+    # Epoch:    number of walks through the whole training set
+    # Total:    number of batches in training set
+    # Time:     clock time in minutes since start of training
+    # NLL train:    mean loss over last 50 batches
+    # NLL val:      loss over validation set
+    # LR:       current learning rate
+
+## run training loop
 for epoch in range(N_epochs):
-    for i, (x, l) in enumerate(data.train_loader):
+    for i, (x, l) in enumerate(data.train_loader):   # for batches in training set
+        # run model forward
         x, l = x.to(device), l.to(device)
         z, log_j = cinn(x, l)
 
+        # do backprop
         nll = torch.mean(z**2) / 2 - torch.mean(log_j) / model.ndim_total
         nll.backward()
         torch.nn.utils.clip_grad_norm_(cinn.trainable_parameters, 10.)
@@ -32,6 +49,7 @@ for epoch in range(N_epochs):
         cinn.optimizer.step()
         cinn.optimizer.zero_grad()
 
+        # print training stats for every 50th batch 
         if not i % 50:
             with torch.no_grad():
                 z, log_j = cinn(data.val_x, data.val_l)
@@ -46,7 +64,9 @@ for epoch in range(N_epochs):
                 ), 
                 flush=True
             )
-            nll_mean = []
-    scheduler.step()
+            nll_mean = []   # reset list
+    
+    scheduler.step()   # update learning rate
 
+## save trained model
 torch.save(cinn.state_dict(), 'output/mnist_cinn.pt')

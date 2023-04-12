@@ -5,7 +5,9 @@ import torch.optim
 import FrEIA.framework as Ff
 import FrEIA.modules as Fm
 
+
 ndim_total = 28 * 28
+
 
 def one_hot(labels, out=None):
     '''
@@ -20,6 +22,7 @@ def one_hot(labels, out=None):
     out.scatter_(dim=1, index=labels.view(-1,1), value=1.)
     return out
 
+
 class MNIST_cINN(nn.Module):
     '''cINN for class-conditional MNISt generation'''
     def __init__(self, lr):
@@ -32,6 +35,7 @@ class MNIST_cINN(nn.Module):
             p.data = 0.01 * torch.randn_like(p)
 
         self.optimizer = torch.optim.Adam(self.trainable_parameters, lr=lr, weight_decay=1e-5)
+
 
     def build_inn(self):
 
@@ -53,11 +57,13 @@ class MNIST_cINN(nn.Module):
 
         return Ff.ReversibleGraphNet(nodes + [cond, Ff.OutputNode(nodes[-1])], verbose=False)
 
+
     def forward(self, x, l):
         #z = self.cinn(x, c=one_hot(l))
         #jac = self.cinn.log_jacobian(run_forward=False)
         z, jac = self.cinn.forward(x, c=one_hot(l))
         return z, jac
+
 
     def reverse_sample(self, z, l):
         return self.cinn(z, c=one_hot(l), rev=True)
