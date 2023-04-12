@@ -1,2 +1,3 @@
 # Rotated cINN
- A small experiment which trains a simple cINN on Rotated MNIST
+This is a small experiment which trains a simple cINN on Rotated MNIST.
+It is part of my bachelor thesis.
