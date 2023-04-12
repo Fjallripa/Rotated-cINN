@@ -1,0 +1,46 @@
+# rot-cinn
+# ========
+
+# Requirements for the "rot-cinn" conda environment
+(conda will also install all dependencies)
+
+
+python 3.10.10          (includes pip but conda is recommended)
+jupyterlab 3.5.3        (includes Jupyter Notebook)
+
+freia 0.2               (via pip)
+
+numpy 1.23.5
+scikit-learn 1.2.2      (includes scipy)
+scikit-image 0.19.3
+pillow 9.4.0
+
+pytorch 2.0.0           (-c pytorch)
+torchvision 0.15.0      (-c pytorch)
+If on CPU: 
+	cpuonly 2.0.0         (-c pytorch)
+If on Nvidia GPU: 
+	pytorch-cuda 11.8     (-c nvidia)
+
+matplotlib 3.7.1
+visdom 0.2.4            (-c conda-forge)
+tqdm 4.65.0
+
+
+
+# Experimental (may be temporary)
+
+
+
+# Minimum requirements listed in the GitHub README
+numpy 1.15.0
+scikit-image 0.14.2
+scikit-learn 0.20.3     (includes scipy)
+pillow 6.0.0
+
+pytorch 1.0.0           (-c pytorch)
+torchvision 0.2.1       (-c pytorch)
+(cpuonly 2.0.0)         (-c pytorch)
+
+matplotlib 2.2.3
+visdom 0.1.8.5          (-c conda-forge)

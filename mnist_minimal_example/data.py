@@ -3,6 +3,8 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 import torchvision.transforms as T
 import torchvision.datasets
 
+device = 'cuda'  if torch.cuda.is_available() else  'cpu'
+
 batch_size = 256
 data_mean = 0.128
 data_std = 0.305
@@ -23,8 +25,8 @@ test_data = torchvision.datasets.MNIST(data_dir, train=False, download=True,
 
 # Sample a fixed batch of 1024 validation examples
 val_x, val_l = zip(*list(train_data[i] for i in range(1024)))
-val_x = torch.stack(val_x, 0).cuda()
-val_l = torch.LongTensor(val_l).cuda()
+val_x = torch.stack(val_x, 0).to(device)
+val_l = torch.LongTensor(val_l).to(device)
 
 # Exclude the validation batch from the training data
 train_data.data = train_data.data[1024:]

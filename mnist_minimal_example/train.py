@@ -9,8 +9,10 @@ import numpy as np
 import model
 import data
 
+device = 'cuda'  if torch.cuda.is_available() else  'cpu'
+
 cinn = model.MNIST_cINN(5e-4)
-cinn.cuda()
+cinn.to(device)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(cinn.optimizer, milestones=[20, 40], gamma=0.1)
 
 N_epochs = 60
@@ -20,7 +22,7 @@ nll_mean = []
 print('Epoch\tBatch/Total \tTime \tNLL train\tNLL val\tLR')
 for epoch in range(N_epochs):
     for i, (x, l) in enumerate(data.train_loader):
-        x, l = x.cuda(), l.cuda()
+        x, l = x.to(device), l.to(device)
         z, log_j = cinn(x, l)
 
         nll = torch.mean(z**2) / 2 - torch.mean(log_j) / model.ndim_total
@@ -35,13 +37,15 @@ for epoch in range(N_epochs):
                 z, log_j = cinn(data.val_x, data.val_l)
                 nll_val = torch.mean(z**2) / 2 - torch.mean(log_j) / model.ndim_total
 
-            print('%.3i \t%.5i/%.5i \t%.2f \t%.6f\t%.6f\t%.2e' % (epoch,
-                                                            i, len(data.train_loader),
-                                                            (time() - t_start)/60.,
-                                                            np.mean(nll_mean),
-                                                            nll_val.item(),
-                                                            cinn.optimizer.param_groups[0]['lr'],
-                                                            ), flush=True)
+            print('%.3i \t%.5i/%.5i \t%.2f \t%.6f\t%.6f\t%.2e' % (
+                    epoch, i, len(data.train_loader), 
+                    (time() - t_start)/60.,
+                    np.mean(nll_mean),
+                    nll_val.item(),
+                    cinn.optimizer.param_groups[0]['lr'],
+                ), 
+                flush=True
+            )
             nll_mean = []
     scheduler.step()
 

@@ -54,8 +54,9 @@ class MNIST_cINN(nn.Module):
         return Ff.ReversibleGraphNet(nodes + [cond, Ff.OutputNode(nodes[-1])], verbose=False)
 
     def forward(self, x, l):
-        z = self.cinn(x, c=one_hot(l))
-        jac = self.cinn.log_jacobian(run_forward=False)
+        #z = self.cinn(x, c=one_hot(l))
+        #jac = self.cinn.log_jacobian(run_forward=False)
+        z, jac = self.cinn.forward(x, c=one_hot(l))
         return z, jac
 
     def reverse_sample(self, z, l):
