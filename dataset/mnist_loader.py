@@ -1,4 +1,6 @@
-"""Pytorch Dataset object that loads MNIST and SVHN. It returns x,y,s where s=0 when x,y is taken from MNIST."""
+# Data Preparation (from DIVA)
+# ============================
+# defines the MnistRotated class and provides a script for doing the data preparation
 
 import os
 import numpy as np
@@ -7,27 +9,40 @@ import torch.utils.data as data_utils
 from torchvision import datasets, transforms
 
 
+# Main class definition
 class MnistRotated(data_utils.Dataset):
+    """
+    Pytorch Dataset object that loads MNIST. It returns x,y,s where s=0 when x,y is taken from MNIST.
+    """
+
+    # Create an instance 
     def __init__(self, list_train_domains, list_test_domain, num_supervised, mnist_subset, root, transform=None, train=True, download=True):
-        self.list_train_domains = list_train_domains
-        self.list_test_domain = list_test_domain
-        self.num_supervised = num_supervised
-        self.mnist_subset = mnist_subset
+
+        self.list_train_domains = list_train_domains  # List of the training angles.
+        self.list_test_domain = list_test_domain      # List of the (one) test angle.
+        self.num_supervised = num_supervised   # number of labeled training images
+        self.mnist_subset = mnist_subset   #
         self.root = os.path.expanduser(root)
         self.transform = transform
         self.train = train
         self.download = download
 
+        # Create a training or a test dataset
         if self.train:
             self.train_data, self.train_labels, self.train_domain = self._get_data()
         else:
             self.test_data, self.test_labels, self.test_domain = self._get_data()
 
+
     def load_inds(self):
-        return np.load(self.root + '/supervised_inds_' + str(self.mnist_subset) + '.npy')
+        return np.load(self.root + 'supervised_inds_' + str(self.mnist_subset) + '.npy')
+
 
     def _get_data(self):
+        # Creating the training dataset
         if self.train:
+            # Load the relevant digits
+            ## Download the whole MNIST traing dataset into a data loader, unshuffled.
             train_loader = torch.utils.data.DataLoader(datasets.MNIST(self.root,
                                                                       train=True,
                                                                       download=self.download,
@@ -35,19 +50,26 @@ class MnistRotated(data_utils.Dataset):
                                                        batch_size=60000,
                                                        shuffle=False)
 
+            ## Separate images and labels
             for i, (x, y) in enumerate(train_loader):
                 mnist_imgs = x
                 mnist_labels = y
 
-            # Get num_supervised number of labeled examples
+            ## Get num_supervised number of labeled examples
+                # The training dataset consists of only a small subsection of the MNIST dataset.
+                # There seems to be no script left that generated these indices.
+                # My analysis indicates they were sampled uniformly from 0 to 59999.
+                # With replecament inside a class, without replacement between classes.
             sup_inds = self.load_inds()
             mnist_labels = mnist_labels[sup_inds]
             mnist_imgs = mnist_imgs[sup_inds]
 
+            
+            # Run transforms
+            ## Parameters
             to_pil = transforms.ToPILImage()
             to_tensor = transforms.ToTensor()
 
-            # Run transforms
             mnist_0_img = torch.zeros((self.num_supervised, 28, 28))
             mnist_15_img = torch.zeros((self.num_supervised, 28, 28))
             mnist_30_img = torch.zeros((self.num_supervised, 28, 28))
@@ -55,6 +77,8 @@ class MnistRotated(data_utils.Dataset):
             mnist_60_img = torch.zeros((self.num_supervised, 28, 28))
             mnist_75_img = torch.zeros((self.num_supervised, 28, 28))
 
+            ## Rotate the selected images
+                # All domains have the same num_supervised images, only rotated.
             for i in range(len(mnist_imgs)):
                 mnist_0_img[i] = to_tensor(to_pil(mnist_imgs[i]))
 
@@ -73,7 +97,8 @@ class MnistRotated(data_utils.Dataset):
             for i in range(len(mnist_imgs)):
                 mnist_75_img[i] = to_tensor(transforms.functional.rotate(to_pil(mnist_imgs[i]), 75))
 
-            # Choose subsets that should be included into the training
+
+            # Choose the domains (angles) that should be included into the training
             training_list_img = []
             training_list_labels = []
 
@@ -168,11 +193,13 @@ class MnistRotated(data_utils.Dataset):
 
             return mnist_imgs_rot.unsqueeze(1), mnist_labels, test_domain
 
+
     def __len__(self):
         if self.train:
             return len(self.train_labels)
         else:
             return len(self.test_labels)
+
 
     def __getitem__(self, index):
         if self.train:
@@ -190,10 +217,18 @@ class MnistRotated(data_utils.Dataset):
         return x, y, d
 
 
+
+# Main code
 if __name__ == "__main__":
+    '''
+    This script tries out the MnistRotated class and creates a test and train data loader.
+    '''
+    
     from torchvision.utils import save_image
 
+    # Parameters
     seed = 1
+    root = os.path.dirname(os.path.realpath(__file__)) + '/'   # directory of this script
 
     torch.manual_seed(seed)
     torch.backends.cudnn.benchmark = False
@@ -203,8 +238,10 @@ if __name__ == "__main__":
     list_test_domains = ['75']
     num_supervised = 1000
 
+
+    # Try out training dataset
     train_loader = data_utils.DataLoader(
-        MnistRotated(list_train_domains, list_test_domains, num_supervised, seed, '../dataset/', train=True),
+        MnistRotated(list_train_domains, list_test_domains, num_supervised, seed, root, train=True),
         batch_size=100,
         shuffle=False)
 
@@ -225,8 +262,10 @@ if __name__ == "__main__":
 
     print(y_array, d_array)
 
+
+    # Try out test dataset
     test_loader = data_utils.DataLoader(
-        MnistRotated(list_train_domains, list_test_domains, num_supervised, seed, '../dataset/', train=False),
+        MnistRotated(list_train_domains, list_test_domains, num_supervised, seed, root, train=False),
         batch_size=100,
         shuffle=False)
 
