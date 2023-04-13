@@ -1,6 +1,6 @@
 # Model Training
 # ==============
-# run this script to train the model
+# Run this script to train the model.
 
 from time import time
 
@@ -16,7 +16,7 @@ import data
 
 # Parameters
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
-cinn = model.MNIST_cINN(lr=5e-4)
+cinn = model.Rotated_cINN(lr=5e-4)
 cinn.to(device)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(cinn.optimizer, milestones=[20, 40], gamma=0.1)
 
@@ -69,4 +69,4 @@ for epoch in range(N_epochs):
     scheduler.step()   # update learning rate
 
 ## save trained model
-torch.save(cinn.state_dict(), 'output/mnist_cinn.pt')
+torch.save(cinn.state_dict(), 'output/rotated_cinn.pt')
