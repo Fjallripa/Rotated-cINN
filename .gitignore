@@ -1,4 +1,8 @@
 temp/*
 
 */__pycache__/*
-dataset/MNIST/*
+
+reference_code/dataset/MNIST/*
+reference_code/mnist_minimal_example/images/*
+reference_code/mnist_minimal_example/output/*
+reference_code/mnist_minimal_example/mnist_data/*
