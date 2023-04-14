@@ -2,6 +2,8 @@
 # ==================
 # Defines the model class Rotated_cINN.
 
+
+# Imports
 import torch
 import torch.nn as nn
 import torch.optim
@@ -14,41 +16,27 @@ import FrEIA.modules as Fm
 ndim_total = 28 * 28
 
 
-# Support functions
-    # one_hot() is used for every forward pass. This seems completely unnecessary. Just compute one_hot one time when creating the dataset.
-def one_hot(labels, out=None):
-    '''
-    Convert LongTensor labels (contains labels 0-9), to a one hot vector.
-    Can be done in-place using the out-argument (faster, re-use of GPU memory)
-    '''
-
-    if out is None:
-        out = torch.zeros(labels.shape[0], 10).to(labels.device)   # labels.shape[0] is the batch size
-    else:
-        out.zeros_()
-
-    out.scatter_(dim=1, index=labels.view(-1,1), value=1.)
-    return out
-
-
 # Main class
 class Rotated_cINN(nn.Module):
     '''
-    a modified cINN able to generate images from the Rotated MNIST dataset
+    A modified cINN able to generate images from a custom Rotated MNIST dataset.
+    As conditional input it uses the domain and the class.
+    The former is the rotation angle as a cos, sin pair and the latter is a one-hot representation of the digit.
     '''
     
-    def __init__(self, lr):
+    def __init__(self, learning_rate):
         super().__init__()
 
         # Build network
         self.cinn = self.build_inn()
 
         # Random initialization of parameters
+            #? Why this custom initialization? Aren't there standardized torch solutions out there?
         self.trainable_parameters = [p for p in self.cinn.parameters() if p.requires_grad]
         for p in self.trainable_parameters:
             p.data = 0.01 * torch.randn_like(p)
 
-        self.optimizer = torch.optim.Adam(self.trainable_parameters, lr=lr, weight_decay=1e-5)
+        self.optimizer = torch.optim.Adam(self.trainable_parameters, lr=learning_rate, weight_decay=1e-5)
 
 
     def build_inn(self):
@@ -60,7 +48,7 @@ class Rotated_cINN(nn.Module):
                                  nn.Linear(512, ch_out))
 
         nodes = []   # list of freia Nodes, analagous to the nn.Sequential list of pytorch Modules
-        cond = Ff.ConditionNode(10)  # special node providing the external condition for the subnet
+        cond = Ff.ConditionNode(12)  # special node providing the external condition for the subnet
 
 
         # Input nodes
@@ -80,17 +68,22 @@ class Rotated_cINN(nn.Module):
         # Output nodes
         nodes.extend([cond, Ff.OutputNode(nodes[-1])])
 
-         # Full network
+        # Full network
         return Ff.ReversibleGraphNet(nodes, verbose=False)
 
 
 
-    def forward(self, x, l):
-        #z = self.cinn(x, c=one_hot(l))
-        #jac = self.cinn.log_jacobian(run_forward=False)
-        z, jac = self.cinn.forward(x, c=one_hot(l))
-        return z, jac
+    def forward(self, x, c):
+        '''
+        turns an image x into a latent code z using the conditional input c
+        '''
+        
+        return self.cinn.forward(x, c)
+        
 
-
-    def reverse_sample(self, z, l):
-        return self.cinn(z, c=one_hot(l), rev=True)
+    def reverse(self, z, c):
+        '''
+        turns a latent code z into an image x using the conditional input c
+        '''
+        
+        return self.cinn(z, c, rev=True)

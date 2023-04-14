@@ -10,8 +10,8 @@ import torch.nn
 import torch.optim
 import numpy as np
 
-import model
-import data
+from ..modules import model, data
+
 
 
 # Parameters
