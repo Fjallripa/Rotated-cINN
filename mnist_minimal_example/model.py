@@ -15,6 +15,7 @@ ndim_total = 28 * 28
 
 
 # Support functions
+    # one_hot() is used for every forward pass. This seems completely unnecessary. Just compute one_hot one time when creating the dataset.
 def one_hot(labels, out=None):
     '''
     Convert LongTensor labels (contains labels 0-9), to a one hot vector.

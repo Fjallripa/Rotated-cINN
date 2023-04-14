@@ -30,7 +30,7 @@ def unnormalize(x):
 # Main code
 ## Download MNIST dataset
 train_data = torchvision.datasets.MNIST(data_dir, train=True, download=True,
-                                        transform=T.Compose([T.ToTensor(), lambda x: (x - data_mean) / data_std]))# creates an instance of MNIST class
+                                        transform=T.Compose([T.ToTensor(), lambda x: (x - data_mean) / data_std]))   # creates an instance of MNIST class
 test_data = torchvision.datasets.MNIST(data_dir, train=False, download=True,
                                         transform=T.Compose([T.ToTensor(), lambda x: (x - data_mean) / data_std]))
 
