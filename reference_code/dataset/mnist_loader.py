@@ -163,7 +163,7 @@ class MnistRotated(data_utils.Dataset):
         else:
             # Load the relevant images
             ## Download the whole MNIST test dataset into a data loader, unshuffled.
-                #!!! Why is train=True??
+                #Why is train=True? -> because the test here is performance on another domain, not on other data.  
             train_loader = torch.utils.data.DataLoader(datasets.MNIST(self.root,
                                                                       train=True,
                                                                       download=self.download,
