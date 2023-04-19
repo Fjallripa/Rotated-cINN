@@ -23,14 +23,14 @@ class RotatedMNIST(Dataset):
         super().__init__()
 
         # Set attributes
-        self.domains = domains
+        self.domains = torch.tensor(domains)
         self.train = train
         self.val_set_size = val_set_size
 
         self.root = os.path.dirname(os.path.realpath(__file__))
         if seed != None:
             torch.manual_seed(seed)
-        self.classes = list(range(10))
+        self.classes = torch.tensor(range(10))
     
 
         # Create dataset
@@ -43,23 +43,24 @@ class RotatedMNIST(Dataset):
         # Shuffle and normalize the images. normalize: uint8 (0..255) -> float32 (0..1)
         loader = DataLoader(dataset, batch_size=len(dataset.targets), shuffle=True)
         images, class_labels = next(iter(loader))
-
+        images = images.squeeze(1)   # remove the batch dimension
+        
         #ToDo: Separate validation set from training data
 
         # Create domain indices
         domain_count = len(self.domains)
-        domain_labels = torch.randint_like(class_labels, domain_count)
+        domain_indices = torch.randint_like(class_labels, domain_count)
 
         # Create the new domain & class label for the cINN
         domains_sincos = torch.tensor([[np.cos(angle), np.sin(angle)]  for angle in np.deg2rad(self.domains)])
         classes_onehot = torch.eye(10)
-        sincos_labels = domains_sincos[domain_labels]
+        sincos_labels = domains_sincos[domain_indices]
         onehot_labels = classes_onehot[class_labels]
         cinn_labels = torch.cat((sincos_labels, onehot_labels), 1)
 
         # Rotate the images according to their domain
         images_rotated = torch.zeros_like(images)
-        rotations = self.domains[domain_labels]
+        rotations = self.domains[domain_indices]
         for i in range(len(images_rotated)):
             images_rotated[i] = transforms.functional.rotate(images[i], rotations[i])
         
