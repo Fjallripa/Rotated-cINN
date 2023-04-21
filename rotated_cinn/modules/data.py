@@ -1,6 +1,8 @@
 # Dataset preparation
 # ================
 # defines the MnistRotated dataset class
+#
+# code inspired by https://github.com/AMLab-Amsterdam/DIVA
 
 
 
@@ -39,7 +41,7 @@ class RotatedMNIST(Dataset):
         self.data, self.targets = self._process_data(mnist)
 
 
-    def _process_data(self, dataset):
+    def _process_data(self, dataset:Dataset) -> tuple[torch.tensor]:
         # Shuffle and normalize the images. normalize: uint8 (0..255) -> float32 (0..1)
         loader = DataLoader(dataset, batch_size=len(dataset.targets), shuffle=True)
         images, class_labels = next(iter(loader))
@@ -52,7 +54,7 @@ class RotatedMNIST(Dataset):
         domain_indices = torch.randint_like(class_labels, domain_count)
 
         # Create the new domain & class label for the cINN
-        domains_sincos = torch.tensor([[np.cos(angle), np.sin(angle)]  for angle in np.deg2rad(self.domains)])
+        domains_sincos = self._deg2sincos(self.domains)
         classes_onehot = torch.eye(10)
         sincos_labels = domains_sincos[domain_indices]
         onehot_labels = classes_onehot[class_labels]
@@ -62,13 +64,29 @@ class RotatedMNIST(Dataset):
         images_rotated = torch.zeros_like(images)
         rotations = self.domains[domain_indices]
         for i in range(len(images_rotated)):
-            images_rotated[i] = transforms.functional.rotate(images[i], rotations[i])
+            images_rotated[i] = self._rotate(images[i], int(rotations[i]))
         
         # Return results
         self.domain_labels = rotations
         self.class_labels = class_labels
 
         return images_rotated, cinn_labels
+        
+
+    @staticmethod
+    def _deg2sincos(degrees:torch.tensor) -> torch.tensor:
+        return torch.tensor(
+            [[np.cos(angle), np.sin(angle)]  for angle in np.deg2rad(degrees)], 
+            dtype = torch.float32
+        )
+    
+
+    @staticmethod
+    def _rotate(image:torch.tensor, degrees:int) -> torch.tensor:
+        to_pil = transforms.ToPILImage()
+        to_tensor = transforms.ToTensor()
+        
+        return to_tensor(transforms.functional.rotate(to_pil(image), degrees))
         
 
     def __len__(self):
@@ -82,102 +100,3 @@ class RotatedMNIST(Dataset):
         digit = self.class_labels[index]
         
         return image, label, angle, digit
-
-
-# Old versions of _process_data(). Temporary
-'''
-        # Create dataset
-        mnist = datasets.MNIST(root=self.root, train=self.train, download=True, transform=transforms.ToTensor())
-        
-        self.data, self.targets = self._process_data(mnist)
-
-
-    def _process_data(self, dataset):
-        # Shuffle and normalize the images. normalize: uint8 (0..255) -> float32 (0..1)
-        loader = DataLoader(dataset, batch_size=len(dataset.targets), shuffle=True)
-        images, labels = next(iter(loader))
-
-        #ToDo: Separate validation set from training data
-
-        # Create domain indices
-        set_size_raw = len(labels)
-        num_domains = len(self.domains)
-        domain_size = set_size_raw // num_domains
-        domain_indices = torch.tensor([i // domain_size for i in range(set_size_raw)])
-        domain_mask = domain_indices < num_domains
-        
-        # Cut off remainder of dataset from division into domains
-        domains_cutoff = self.domains[domain_indices][domain_mask]
-        labels_cutoff = labels[domain_mask]
-        images_cutoff = images[domain_mask]
-
-        # Create the new domain & class label for the cINN
-        d = torch.tensor([(np.cos(angle), np.sin(angle))  for angle in np.deg2rad(self.domains)])
-        domains_trig = d[domains_cutoff]
-        y = torch.eye(10)
-        labels_onehot = y[labels_cutoff]
-
-        labels_cinn = torch.cat((d, y), 1)
-
-        # Rotate the images according to their domain
-        images_rotated = torch.zeros_like(images_cutoff)
-        for i in range(len(images_rotated)):
-            images_rotated[i] = transforms.functional.rotate(images_cutoff[i], domains_cutoff[i])
-
-        # Shuffle all once more
-        shuffle = torch.randperm(len(labels_cinn))
-        data = images_rotated[shuffle]
-        targets = labels_cinn[shuffle]
-        
-        return data, targets
-        
-
-    def __len__(self):
-        return len(self.targets)
-
-
-    def __getitem__(self, index):
-        image = self.data[index]
-        label = self.targets[index]
-        
-        return image, label
-'''
-
-'''
-# Create dataset
-        if self.train:
-            self.load_training()
-        else:
-            self.load_test()
-
-        self.process_data()
-        
-
-
-    def load_training(self):
-        mnist = datasets.MNIST(root=self.root, train=True, download=True, transform=transforms.ToTensor())
-        mnist.data = mnist.data.to(float) / 255  
-            # converts images from uint8 (0..255) to float32, normalizes them to 0..1
-            # The dataloader does the same. This is just a precaution.
-        shuffle = torch.randperm(mnist.data.size()[0])
-        mnist.data = mnist.data[shuffle]
-        mnist.targets = mnist.targets[shuffle]
-
-        
-
-
-    def load_test(self):
-        pass
-
-
-    def process_data(self):
-        pass
-
-
-    def __len__(self):
-        pass
-
-
-    def __getitem__(self, index):
-        pass
-'''
