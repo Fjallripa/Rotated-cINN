@@ -15,40 +15,67 @@ from torchvision import datasets, transforms
 
 
 
-# Main class
-class RotatedMNIST(Dataset):
+# Main classes
+class DomainMNIST(Dataset):
     '''
-    Creates a custom RotatedMNIST dataset.
+    
     '''
 
-    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None) -> None:
+    def __init__(self, domains: list[int]) -> None:
         super().__init__()
 
         # Set attributes
         self.domains = torch.tensor(domains)
+        self.classes = torch.arange(10)
+
+        ## Predefine attributes for subclasses
+        self.data = None
+        self.targets = None
+        self.domain_labels = None
+        self.class_labels = None
+
+
+    def __len__(self):
+        return len(self.targets)
+
+
+    def __getitem__(self, index):
+        image = self.data[index]
+        label = self.targets[index]
+        angle = self.domain_labels[index]
+        digit = self.class_labels[index]
+        
+        return image, label, angle, digit
+
+
+
+class RotatedMNIST(DomainMNIST):
+    '''
+    
+    '''
+
+    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None) -> None:
+        super().__init__(domains)
+
+        # Set attributes
         self.train = train
         self.val_set_size = val_set_size
-
+        self.val = None
         self.root = os.path.dirname(os.path.realpath(__file__))
         if seed != None:
             torch.manual_seed(seed)
-        self.classes = torch.tensor(range(10))
-    
-
+        
         # Create dataset
         mnist = datasets.MNIST(root=self.root, train=self.train, download=True, transform=transforms.ToTensor())
-        
-        self.data, self.targets = self._process_data(mnist)
+        self._process_data(mnist)
 
 
-    def _process_data(self, dataset:Dataset) -> tuple[torch.tensor]:
+    def _process_data(self, dataset:Dataset) -> None:
         # Shuffle and normalize the images. normalize: uint8 (0..255) -> float32 (0..1)
         loader = DataLoader(dataset, batch_size=len(dataset.targets), shuffle=True)
         images, class_labels = next(iter(loader))
         images = images.squeeze(1)   # remove the batch dimension
         
-        #ToDo: Separate validation set from training data
-
         # Create domain indices
         domain_count = len(self.domains)
         domain_indices = torch.randint_like(class_labels, domain_count)
@@ -67,10 +94,24 @@ class RotatedMNIST(Dataset):
             images_rotated[i] = self._rotate(images[i], int(rotations[i]))
         
         # Return results
-        self.domain_labels = rotations
-        self.class_labels = class_labels
+        if self.train and self.val_set_size > 0:
+            # Split off a validation set
+            val_size   = self.val_set_size
+            train_size = len(images_rotated) - val_size
+            cut = lambda tensor: tensor.split([train_size, val_size])
 
-        return images_rotated, cinn_labels
+            # Create train and validation set
+            self.val = DomainMNIST(self.domains)   # create instance for validation set
+            self.data,          self.val.data          = cut(images_rotated)
+            self.targets,       self.val.targets       = cut(cinn_labels)
+            self.domain_labels, self.val.domain_labels = cut(rotations)
+            self.class_labels,  self.val.class_labels  = cut(class_labels)
+        else:
+            # Save train/test set
+            self.data          = images_rotated
+            self.targets       = cinn_labels
+            self.domain_labels = rotations
+            self.class_labels  = class_labels
         
 
     @staticmethod
@@ -87,16 +128,3 @@ class RotatedMNIST(Dataset):
         to_tensor = transforms.ToTensor()
         
         return to_tensor(transforms.functional.rotate(to_pil(image), degrees))
-        
-
-    def __len__(self):
-        return len(self.targets)
-
-
-    def __getitem__(self, index):
-        image = self.data[index]
-        label = self.targets[index]
-        angle = self.domain_labels[index]
-        digit = self.class_labels[index]
-        
-        return image, label, angle, digit
