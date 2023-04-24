@@ -25,8 +25,8 @@ class DomainMNIST(Dataset):
         super().__init__()
 
         # Set attributes
-        self.domains = torch.tensor(domains)
-        self.classes = torch.arange(10)
+        self.domains = domains
+        self.classes = list(range(10))
 
         ## Predefine attributes for subclasses
         self.data = None
@@ -89,17 +89,15 @@ class RotatedMNIST(DomainMNIST):
 
         # Rotate the images according to their domain
         images_rotated = torch.zeros_like(images)
-        rotations = self.domains[domain_indices]
+        rotations = torch.tensor(self.domains)[domain_indices]
         for i in range(len(images_rotated)):
             images_rotated[i] = self._rotate(images[i], int(rotations[i]))
         
         # Return results
         if self.train and self.val_set_size > 0:
-            # Split off a validation set
-            val_size   = self.val_set_size
-            train_size = len(images_rotated) - val_size
-            cut = lambda tensor: tensor.split([train_size, val_size])
-
+            cutoff = len(images_rotated) - self.val_set_size   # size of remaining training set
+            cut = lambda tensor: self._split(tensor, at=cutoff)
+            
             # Create train and validation set
             self.val = DomainMNIST(self.domains)   # create instance for validation set
             self.data,          self.val.data          = cut(images_rotated)
@@ -115,7 +113,7 @@ class RotatedMNIST(DomainMNIST):
         
 
     @staticmethod
-    def _deg2sincos(degrees:torch.tensor) -> torch.tensor:
+    def _deg2sincos(degrees:torch.Tensor) -> torch.Tensor:
         return torch.tensor(
             [[np.cos(angle), np.sin(angle)]  for angle in np.deg2rad(degrees)], 
             dtype = torch.float32
@@ -123,8 +121,19 @@ class RotatedMNIST(DomainMNIST):
     
 
     @staticmethod
-    def _rotate(image:torch.tensor, degrees:int) -> torch.tensor:
+    def _rotate(image:torch.Tensor, degrees:int) -> torch.Tensor:
         to_pil = transforms.ToPILImage()
         to_tensor = transforms.ToTensor()
         
         return to_tensor(transforms.functional.rotate(to_pil(image), degrees))
+    
+
+    @staticmethod
+    def _split(tensor:torch.Tensor, at:int) -> tuple[torch.Tensor]:
+        len_a = at
+        len_b = len(tensor) - len_a
+        tensor_a, tensor_b = tensor.split([len_a, len_b])
+        tensor_a = tensor_a.detach().clone()
+        tensor_b = tensor_b.detach().clone()
+        
+        return tensor_a, tensor_b    
