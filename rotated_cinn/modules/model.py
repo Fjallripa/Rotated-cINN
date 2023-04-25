@@ -24,7 +24,7 @@ class Rotated_cINN(nn.Module):
     The former is the rotation angle as a cos, sin pair and the latter is a one-hot representation of the digit.
     '''
     
-    def __init__(self, learning_rate):
+    def __init__(self):
         super().__init__()
 
         # Build network
@@ -35,8 +35,6 @@ class Rotated_cINN(nn.Module):
         self.trainable_parameters = [p for p in self.cinn.parameters() if p.requires_grad]
         for p in self.trainable_parameters:
             p.data = 0.01 * torch.randn_like(p)
-
-        self.optimizer = torch.optim.Adam(self.trainable_parameters, lr=learning_rate, weight_decay=1e-5)
 
 
     def build_inn(self):
