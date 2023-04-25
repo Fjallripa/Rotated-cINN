@@ -6,8 +6,6 @@
 
 
 # Imports
-import os
-import sys
 from time import time
 
 import numpy as np
@@ -16,16 +14,14 @@ import torch.nn
 import torch.optim
 from torch.utils.data import DataLoader
 
-file_directory    = os.path.dirname(os.path.realpath(__file__))
-package_directory = os.path.realpath(file_directory + "../../")
-sys.path.append(package_directory)
-
+import path   # adds repo to PATH
 from modules.model import Rotated_cINN
 from modules.data import RotatedMNIST
 
 
 # Parameters
-save_path = os.path.realpath(file_directory + '/../trained_models/rotated_cinn.pt')
+save_path = path.package_directory + '/trained_models/rotated_cinn.pt'
+print(save_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 nll_mean = []
