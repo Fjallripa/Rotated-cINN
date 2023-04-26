@@ -21,7 +21,6 @@ from modules.data import RotatedMNIST
 
 # Parameters
 save_path = path.package_directory + '/trained_models/rotated_cinn.pt'
-print(save_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 nll_mean = []
