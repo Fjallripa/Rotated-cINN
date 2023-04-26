@@ -36,13 +36,13 @@ def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
     
     # Train and test bars with error
     ax.bar(train_spots - width/2, train_loss['mean'], width=width, label='train')
-    ax.errorbar(train_spots - width/2, train_loss['mean'], test_loss['err'], fmt='', ecolor='black')
+    ax.errorbar(train_spots - width/2, train_loss['mean'], train_loss['err'], fmt=',', ecolor='black')
     ax.bar(test_spots + width/2, test_loss['mean'], width=width, label='test')
-    ax.errorbar(test_spots + width/2, test_loss['mean'], test_loss['err'], fmt='', ecolor='black')
+    ax.errorbar(test_spots + width/2, test_loss['mean'], test_loss['err'], fmt=',', ecolor='black')
 
     # Title, labels, etc.
     ax.set_title('MaxLikelihood loss of Rotated cINN')
-    ax.set_ylim(0, 1.1 * max(max(train_loss['angles']), max(test_loss['angles'])))
+    #ax.set_ylim(0, 1.1 * max(max(train_loss['angles']), max(test_loss['angles'])))
     ax.set_xticks(test_spots, labels=test_loss['angles'])
     ax.legend(loc='upper center', ncols=2)
 
@@ -52,7 +52,7 @@ def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
 ### Support functions for show_domain_bar_plot()
 def compute_loss(model_output: torch.Tensor) -> tuple[float]:
     z, log_j = model_output
-    losses = z**2 / 2 - log_j / ndim_total
+    losses = (z**2).mean(dim=1) / 2 - log_j / ndim_total
     std, mean = torch.std_mean(losses)
     mean_err = std / len(z)
 
@@ -93,11 +93,11 @@ if __name__ == "__main__":
     cinn.eval()
 
     # Load datasets
+    all_domains = sorted(train_domains + test_domains)
     train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=1000)
-    test_set = RotatedMNIST(domains=test_domains, train=False, seed=random_seed)
+    test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed)
     
     # Calculate loss for each domain
-    all_domains = sorted(train_domains + test_domains)
     train_domain_loss = get_per_domain_loss(train_domains, train_set, cinn, samples_per_domain)
     test_domain_loss = get_per_domain_loss(all_domains, test_set, cinn, samples_per_domain)
 
