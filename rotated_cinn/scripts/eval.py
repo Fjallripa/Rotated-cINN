@@ -31,7 +31,8 @@ def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
 
     # Spots for the bars on the x-axis
     test_spots = np.arange(len(test_loss['angles']))
-    train_spots = np.nonzero(np.in1d(test_loss['angles'], train_loss['angles']))[0]
+    train_mask = np.isin(test_loss['angles'], train_loss['angles'])
+    train_spots = test_loss['angles'][train_mask]
     width = 1/3  # the width of the bars
     
     # Train and test bars with error
@@ -103,3 +104,63 @@ if __name__ == "__main__":
 
     # Plot losses
     show_domain_bar_plot(train_domain_loss, test_domain_loss)
+
+
+    # Generate images 
+    """
+    #make readable cond tensor
+    ##for i in train_domains
+    ##..for j in classes
+    ##....[i, j] [*] 5
+    number_of_copies = 5
+    conditions_readable = torch.zeros((len(train_domains), len(train_set.classes), number_of_copies, 2))
+    for i, d in enumerate(train_domains):
+        conditions_readable[i, :, :, 0] = d
+    for j, c in enumerate(train_set.classes):
+        conditions_readable[:, j, :, 1] = c
+     
+    for i, d in enumerate(train_domains):
+        for j, c in enumerate(train_set.classes):
+            conditions_readable[i, j] = torch.tensor([d, c])
+    
+    #convert cond tensor
+
+    """
+    
+    number_of_copies = 5
+    grid_shape = (len(train_domains), len(train_set.classes), number_of_copies)
+
+    #create cond tensor    
+    conditions = torch.zeros((*grid_shape, 12))
+    for i, d in enumerate(train_domains):
+        domains_sincos = train_set._deg2sincos(train_domains)
+        conditions[i, :, :, :2] = domains_sincos
+    for j in range(10):   # "for j in classes"
+        classes_onehot = torch.eye(10)
+        conditions[:, j, :, 2:] = classes_onehot[j]
+        
+
+    #cinn reverse
+    latent_tensor = torch.randn((*grid_shape, 28, 28))
+    generated_images = cinn.reverse(latent_tensor, conditions)
+
+    #sample from train_set
+    ##find enough samples for each domain-class pair
+    all_domain_indices = []
+    for domain in train_domains:
+        domain_indices = torch.argwhere(domain == train_set.domain_labels)
+        all_domain_indices.append(domain_indices)
+    
+    all_class_indices = []
+    for class_label in train_set.classes:
+        class_indices = torch.argwhere(class_label == train_set.class_labels)
+        all_class_indices.append(class_indices)
+    
+    all_domain_class_indices = torch.zeros(grid_shape, dtype=int)
+    for i in grid_shape[0]:   # domains
+        for j in grid_shape[1]:   # classes
+            class_mask = np.isin(all_domain_indices[i], all_class_indices[j])
+            domain_class_indices = all_domain_indices[i][class_mask]
+            all_domain_class_indices[i, j] = domain_class_indices[:grid_shape[2]]
+
+    sampled_images = train_set.data[all_domain_class_indices]        
