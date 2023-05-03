@@ -20,12 +20,12 @@ from modules.data import RotatedMNIST
 
 
 # Parameters
-save_path = path.package_directory + '/trained_models/rotated_cinn.pt'
+save_path = path.package_directory + '/trained_models/rotated_cinn60.pt'
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 nll_mean = []
 
-N_epochs = 5
+N_epochs = 60
 batch_size = 256
 learning_rate = 5e-4
 

@@ -7,11 +7,12 @@
 
 
 # Imports
-import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
+
+import path   # adds repo to PATH
 
 
 
@@ -61,7 +62,7 @@ class RotatedMNIST(DomainMNIST):
         self.train = train
         self.val_set_size = val_set_size
         self.val = None
-        self.root = os.path.dirname(os.path.realpath(__file__))
+        self.root = path.package_directory + "/data"
         if seed != None:
             torch.manual_seed(seed)
         

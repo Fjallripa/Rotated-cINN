@@ -6,5 +6,6 @@ reference_code/mnist_minimal_example/images/*
 reference_code/mnist_minimal_example/output/*
 
 rotated_cinn/trained_models/*
+rotated_cinn/analysis/*
 
 **/MNIST/raw/*

@@ -14,14 +14,16 @@ from modules.data import RotatedMNIST
 
 
 # Parameters
-save_path = path.package_directory + '/trained_models/rotated_cinn.pt'
+model_path = path.package_directory + "/trained_models/rotated_cinn60.pt"
+analysis_path = path.package_directory + "/analysis/rotated_cinn60"
+path.makedir(analysis_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 train_domains = [-23, 0, 23, 45, 90, 180]
 test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
 samples_per_domain = 100
 ndim_total = 28 * 28
-
+number_of_copies = 3   # number of samples displayed for each domain and class in the visual comparision
 
 # Main functions
 ## Plotting losses
@@ -31,8 +33,7 @@ def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
 
     # Spots for the bars on the x-axis
     test_spots = np.arange(len(test_loss['angles']))
-    train_mask = np.isin(test_loss['angles'], train_loss['angles'])
-    train_spots = test_loss['angles'][train_mask]
+    train_spots = np.nonzero(np.in1d(test_loss['angles'], train_loss['angles']))[0]
     width = 1/3  # the width of the bars
     
     # Train and test bars with error
@@ -47,6 +48,7 @@ def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
     ax.set_xticks(test_spots, labels=test_loss['angles'])
     ax.legend(loc='upper center', ncols=2)
 
+    plt.savefig(analysis_path + "/domain_bar_plot.png")
     plt.show()
 
 
@@ -89,7 +91,7 @@ if __name__ == "__main__":
     
     # Load trained model
     cinn = Rotated_cINN().to(device)
-    state_dict = {k:v for k,v in torch.load(save_path).items() if 'tmp_var' not in k}
+    state_dict = {k:v for k,v in torch.load(model_path).items() if 'tmp_var' not in k}
     cinn.load_state_dict(state_dict)
     cinn.eval()
 
@@ -106,46 +108,30 @@ if __name__ == "__main__":
     show_domain_bar_plot(train_domain_loss, test_domain_loss)
 
 
-    # Generate images 
-    """
-    #make readable cond tensor
-    ##for i in train_domains
-    ##..for j in classes
-    ##....[i, j] [*] 5
-    number_of_copies = 5
-    conditions_readable = torch.zeros((len(train_domains), len(train_set.classes), number_of_copies, 2))
-    for i, d in enumerate(train_domains):
-        conditions_readable[i, :, :, 0] = d
-    for j, c in enumerate(train_set.classes):
-        conditions_readable[:, j, :, 1] = c
-     
-    for i, d in enumerate(train_domains):
-        for j, c in enumerate(train_set.classes):
-            conditions_readable[i, j] = torch.tensor([d, c])
-    
-    #convert cond tensor
 
-    """
-    
-    number_of_copies = 5
+    # Compare test set images to generated ones
+
+    ## Generate images from cinn
     grid_shape = (len(train_domains), len(train_set.classes), number_of_copies)
 
-    #create cond tensor    
-    conditions = torch.zeros((*grid_shape, 12))
-    for i, d in enumerate(train_domains):
-        domains_sincos = train_set._deg2sincos(train_domains)
-        conditions[i, :, :, :2] = domains_sincos
-    for j in range(10):   # "for j in classes"
-        classes_onehot = torch.eye(10)
-        conditions[:, j, :, 2:] = classes_onehot[j]
-        
+    ### create cond tensor    
+    conditions = torch.zeros((*grid_shape, 12))   # for each image, the external condition for the cINN needs to be created
+    domains_sincos = RotatedMNIST._deg2sincos(train_domains)
+    conditions[:, :, :, :2] = domains_sincos[:, None, None, :]
+    classes_onehot = torch.eye(10)
+    conditions[:, :, :, 2:] = classes_onehot[None, :, None, :]  
 
-    #cinn reverse
-    latent_tensor = torch.randn((*grid_shape, 28, 28))
-    generated_images = cinn.reverse(latent_tensor, conditions)
+    ### cinn reverse
+    latent_tensor = torch.randn((*grid_shape, 28 * 28))
+    generated_images = torch.zeros([*grid_shape, 28, 28])
+    for d in range(grid_shape[0]):   # domains
+        for c in range(grid_shape[1]):   # classes
+            images, gradients = cinn.reverse(latent_tensor[d, c], conditions[d, c])
+            generated_images[d, c] = images.squeeze(1).cpu().detach()   # remove batch dimension
 
-    #sample from train_set
-    ##find enough samples for each domain-class pair
+
+    ## sample from train_set
+        # find enough samples for each domain-class pair
     all_domain_indices = []
     for domain in train_domains:
         domain_indices = torch.argwhere(domain == train_set.domain_labels)
@@ -157,10 +143,46 @@ if __name__ == "__main__":
         all_class_indices.append(class_indices)
     
     all_domain_class_indices = torch.zeros(grid_shape, dtype=int)
-    for i in grid_shape[0]:   # domains
-        for j in grid_shape[1]:   # classes
+    for i in range(grid_shape[0]):   # domains
+        for j in range(grid_shape[1]):   # classes
             class_mask = np.isin(all_domain_indices[i], all_class_indices[j])
             domain_class_indices = all_domain_indices[i][class_mask]
             all_domain_class_indices[i, j] = domain_class_indices[:grid_shape[2]]
 
-    sampled_images = train_set.data[all_domain_class_indices]        
+    sampled_images = train_set.data[all_domain_class_indices]
+
+
+    ## Display sampled and generated images side by side
+    ### Reshape images for better display
+        # [6, 10, 5, 28, 28] -> [6, 5, 28, 10, 28] -> [6, 140, 10, 28] -> [6, 140, 280]
+    generated_image_grid = generated_images.movedim(1, 3).flatten(1, 2).flatten(2, 3)
+    sampled_image_grid = sampled_images.movedim(1, 3).flatten(1, 2).flatten(2, 3)
+    generated_image_grid = generated_image_grid.clamp(0, 1)
+
+    ### Set plotting parameters
+    image_scaling = 0.5
+    subfigure_size = np.array([(2*grid_shape[1] + 2),   # 2x classes + middle column
+                            (grid_shape[2] + 1)],    # rows + title
+                        dtype=float) * image_scaling  
+    figure_size = subfigure_size * np.array([1, grid_shape[0]], dtype=float)
+
+    ### Plot visualizations, one domain after another
+    fig = plt.figure(figsize=figure_size, layout='constrained')
+    fig.suptitle("Visual Comparison between train set and generated images", fontsize=15)
+    subfigs = fig.subfigures(grid_shape[0], 1)
+    
+    for d in range(grid_shape[0]):   # "for d in domains"
+        figd = subfigs[d]
+        figd.suptitle(f"{train_domains[d]}°")
+        sub = figd.subplots(1, 2)
+
+        sub[0].set_title("training set samples")
+        sub[0].imshow(sampled_image_grid[d], cmap='gray')
+        sub[0].axis('off')
+
+        sub[1].set_title("Rotated_cINN samples")
+        sub[1].imshow(generated_image_grid[d], cmap='gray')
+        sub[1].axis('off')
+    fig.savefig(analysis_path + "/visual_comparison.png")
+      
+    plt.show()
