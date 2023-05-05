@@ -1,5 +1,5 @@
 # Dataset preparation
-# ================
+# ===================
 # defines the MnistRotated dataset class
 #
 # code inspired by https://github.com/AMLab-Amsterdam/DIVA

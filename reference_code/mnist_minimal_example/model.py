@@ -32,10 +32,7 @@ def one_hot(labels, out=None):
 
 
 # Main class
-class Rotated_cINN(nn.Module):
-    '''
-    a modified cINN able to generate images from the Rotated MNIST dataset
-    '''
+class MNIST_cINN(nn.Module):
     
     def __init__(self, lr):
         super().__init__()

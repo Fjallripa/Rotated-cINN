@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 import path   # adds repo to PATH
 from modules.model import Rotated_cINN
 from modules.data import RotatedMNIST
+from modules.loss import loss
 
 
 # Parameters
@@ -30,7 +31,6 @@ batch_size = 256
 learning_rate = 5e-4
 
 domains = [-23, 0, 23, 45, 90, 180]
-ndim_total = 28 * 28
 
 
 
@@ -65,7 +65,7 @@ for epoch in range(N_epochs):
         z, log_j = cinn(data, targets)
 
         # do backprop
-        nll = torch.mean(z**2) / 2 - torch.mean(log_j) / ndim_total
+        nll, _ = loss('max_likelihood', z, log_j)
         nll.backward()
         torch.nn.utils.clip_grad_norm_(cinn.trainable_parameters, 10.)
         nll_mean.append(nll.item())
@@ -76,7 +76,7 @@ for epoch in range(N_epochs):
         if not i % 50:
             with torch.no_grad():
                 z, log_j = cinn(train_set.val.data, train_set.val.targets)
-                nll_val = torch.mean(z**2) / 2 - torch.mean(log_j) / ndim_total
+                nll_val, _ = loss('max_likelihood', z, log_j)
 
             print('%.3i \t%.5i/%.5i \t%.2f \t%.6f\t%.6f\t%.2e' % (
                     epoch, i, len(train_loader), 

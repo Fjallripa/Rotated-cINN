@@ -11,6 +11,7 @@ import numpy as np
 import path   # adds repo to PATH
 from modules.model import Rotated_cINN
 from modules.data import RotatedMNIST
+from modules.loss import loss
 
 
 # Parameters
@@ -19,10 +20,10 @@ analysis_path = path.package_directory + "/analysis/rotated_cinn60"
 path.makedir(analysis_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
+
 train_domains = [-23, 0, 23, 45, 90, 180]
 test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
 samples_per_domain = 100
-ndim_total = 28 * 28
 number_of_copies = 3   # number of samples displayed for each domain and class in the visual comparision
 
 # Main functions
@@ -44,22 +45,11 @@ def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
 
     # Title, labels, etc.
     ax.set_title('MaxLikelihood loss of Rotated cINN')
-    #ax.set_ylim(0, 1.1 * max(max(train_loss['angles']), max(test_loss['angles'])))
     ax.set_xticks(test_spots, labels=test_loss['angles'])
     ax.legend(loc='upper center', ncols=2)
 
     plt.savefig(analysis_path + "/domain_bar_plot.png")
     plt.show()
-
-
-### Support functions for show_domain_bar_plot()
-def compute_loss(model_output: torch.Tensor) -> tuple[float]:
-    z, log_j = model_output
-    losses = (z**2).mean(dim=1) / 2 - log_j / ndim_total
-    std, mean = torch.std_mean(losses)
-    mean_err = std / len(z)
-
-    return (float(mean), float(mean_err))
 
 
 def get_per_domain_loss(domains:list[int], dataset:RotatedMNIST, model:Rotated_cINN, number:int) -> dict[list]:
@@ -70,18 +60,13 @@ def get_per_domain_loss(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
         
         data = dataset.data[used_indices]
         targets = dataset.targets[used_indices]
-        output = model(data, targets)
-        
-        mean, err = compute_loss(output)
-        loss_info['mean'].append(mean)
-        loss_info['err'].append(err)
+        z, log_j = model(data, targets)
+
+        mean, err = loss('max_likelihood', z, log_j)
+        loss_info['mean'].append(float(mean))
+        loss_info['err'].append(float(err))
 
     return loss_info
-
-
-## Showing generated images
-def show_example_images():
-    pass
 
 
 

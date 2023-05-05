@@ -2,14 +2,17 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
+import path
 import model
 import data
 
+model_path = path.file_directory + '/output/mnist_cinn.pt'
+image_directory = path.file_directory + '/images'
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 
 cinn = model.MNIST_cINN(0)
 cinn.to(device)
-state_dict = {k:v for k,v in torch.load('output/mnist_cinn.pt').items() if 'tmp_var' not in k}
+state_dict = {k:v for k,v in torch.load(model_path).items() if 'tmp_var' not in k}
 cinn.load_state_dict(state_dict)
 
 cinn.eval()
@@ -20,7 +23,6 @@ def show_samples(label):
     N_samples = 100
     l = torch.LongTensor(N_samples).to(device)
     l[:] = label
-    image_path = "./images"
     display_options = {'vmin':0, 'vmax':1, 'cmap':'gray'}
 
     z = 1.0 * torch.randn(N_samples, model.ndim_total).to(device)
@@ -40,10 +42,9 @@ def show_samples(label):
     plt.figure()
     plt.title(F'Generated digits for c={label}')
     plt.imshow(full_image, **display_options)
-    plt.savefig(f"{image_path}/{label}.png")
-    #plt.imsave(f"{image_path}/{label}.png", full_image, **display_options)
+    plt.savefig(f"{image_directory}/{label}.png")
 
-    print(f"Saved image of c={label} to {image_path}.")
+    print(f"Saved image of c={label} to {image_directory}.")
 
 def val_loss():
     '''prints the final validiation loss of the model'''
