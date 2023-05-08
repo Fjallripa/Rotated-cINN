@@ -21,7 +21,7 @@ from modules.loss import loss
 
 
 # Parameters
-save_path = path.package_directory + '/trained_models/rotated_cinn60.pt'
+save_path = path.package_directory + '/trained_models/normalized_data.pt'
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 nll_mean = []
@@ -42,7 +42,7 @@ print("Setting up the model, data loader, etc...")
 cinn = Rotated_cINN().to(device)
 train_set = RotatedMNIST(domains=domains, train=True, seed=random_seed, val_set_size=1000)
 train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, 
-                           num_workers=4, pin_memory=True, drop_last=True)
+                           num_workers=8, pin_memory=True, drop_last=True)
 optimizer = torch.optim.Adam(cinn.trainable_parameters, lr=learning_rate, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
 

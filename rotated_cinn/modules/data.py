@@ -15,25 +15,42 @@ from torchvision import datasets, transforms
 import path   # adds repo to PATH
 
 
+# Parameters
+## Mean and std of MNIST pixel values for normalization
+norm_mean = 0.1307   # Values taken from an unnormalized training set.
+norm_std  = 0.3082
+
+
 
 # Main classes
 class DomainMNIST(Dataset):
     '''
-    
+
     '''
 
-    def __init__(self, domains: list[int]) -> None:
+    def __init__(self, domains: list[int], normalize: bool=False) -> None:
         super().__init__()
 
         # Set attributes
         self.domains = domains
         self.classes = list(range(10))
 
+        self.normalized = normalize   # If normalize=False (default), then normalize() and unnormalize() won't have any effect on the data.
+        self.norm_mean = norm_mean  if self.normalized else  0.0
+        self.norm_std  = norm_std   if self.normalized else  1.0
+
         ## Predefine attributes for subclasses
         self.data = None
         self.targets = None
         self.domain_labels = None
         self.class_labels = None
+
+
+    def normalize(self, data: torch.Tensor) -> torch.Tensor:
+        return (data - self.norm_mean) / self.norm_std
+
+    def unnormalize(self, data: torch.Tensor) -> torch.Tensor:
+        return data * self.norm_std + self.norm_mean
 
 
     def __len__(self):
@@ -45,18 +62,18 @@ class DomainMNIST(Dataset):
         label = self.targets[index]
         angle = self.domain_labels[index]
         digit = self.class_labels[index]
-        
+
         return image, label, angle, digit
 
 
 
 class RotatedMNIST(DomainMNIST):
     '''
-    
+
     '''
 
-    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None) -> None:
-        super().__init__(domains)
+    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None, normalize: bool=False) -> None:
+        super().__init__(domains, normalize=normalize)
 
         # Set attributes
         self.train = train
@@ -65,7 +82,7 @@ class RotatedMNIST(DomainMNIST):
         self.root = path.package_directory + "/data"
         if seed != None:
             torch.manual_seed(seed)
-        
+
         # Create dataset
         mnist = datasets.MNIST(root=self.root, train=self.train, download=True, transform=transforms.ToTensor())
         self._process_data(mnist)
@@ -77,6 +94,7 @@ class RotatedMNIST(DomainMNIST):
         images, class_labels = next(iter(loader))
         images = images.squeeze(1)   # remove the batch dimension
         
+
         # Create domain indices
         domain_count = len(self.domains)
         domain_indices = torch.randint_like(class_labels, domain_count)
@@ -93,14 +111,18 @@ class RotatedMNIST(DomainMNIST):
         rotations = torch.tensor(self.domains)[domain_indices]
         for i in range(len(images_rotated)):
             images_rotated[i] = self._rotate(images[i], int(rotations[i]))
-        
+
+        # Normalize the images
+            # If self.normalized=False, this won't do anything.
+        images_rotated = self.normalize(images_rotated)
+
         # Return results
         if self.train and self.val_set_size > 0:
             cutoff = len(images_rotated) - self.val_set_size   # size of remaining training set
             cut = lambda tensor: self._split(tensor, at=cutoff)
-            
+
             # Create train and validation set
-            self.val = DomainMNIST(self.domains)   # create instance for validation set
+            self.val = DomainMNIST(self.domains, normalize=self.normalized)   # create instance for validation set
             self.data,          self.val.data          = cut(images_rotated)
             self.targets,       self.val.targets       = cut(cinn_labels)
             self.domain_labels, self.val.domain_labels = cut(rotations)
@@ -111,23 +133,23 @@ class RotatedMNIST(DomainMNIST):
             self.targets       = cinn_labels
             self.domain_labels = rotations
             self.class_labels  = class_labels
-        
+
 
     @staticmethod
     def _deg2sincos(degrees:torch.Tensor) -> torch.Tensor:
         return torch.tensor(
-            [[np.cos(angle), np.sin(angle)]  for angle in np.deg2rad(degrees)], 
+            [[np.cos(angle), np.sin(angle)]  for angle in np.deg2rad(degrees)],
             dtype = torch.float32
         )
-    
+
 
     @staticmethod
     def _rotate(image:torch.Tensor, degrees:int) -> torch.Tensor:
         to_pil = transforms.ToPILImage()
         to_tensor = transforms.ToTensor()
-        
+
         return to_tensor(transforms.functional.rotate(to_pil(image), degrees))
-    
+
 
     @staticmethod
     def _split(tensor:torch.Tensor, at:int) -> tuple[torch.Tensor]:
@@ -136,5 +158,5 @@ class RotatedMNIST(DomainMNIST):
         tensor_a, tensor_b = tensor.split([len_a, len_b])
         tensor_a = tensor_a.detach().clone()
         tensor_b = tensor_b.detach().clone()
-        
-        return tensor_a, tensor_b    
+
+        return tensor_a, tensor_b

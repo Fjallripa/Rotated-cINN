@@ -15,8 +15,8 @@ from modules.loss import loss
 
 
 # Parameters
-model_path = path.package_directory + "/trained_models/rotated_cinn60.pt"
-analysis_path = path.package_directory + "/analysis/rotated_cinn60"
+model_path = path.package_directory + "/trained_models/normalized_data.pt"
+analysis_path = path.package_directory + "/analysis/normalized_data"
 path.makedir(analysis_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
@@ -112,6 +112,7 @@ if __name__ == "__main__":
     for d in range(grid_shape[0]):   # domains
         for c in range(grid_shape[1]):   # classes
             images, gradients = cinn.reverse(latent_tensor[d, c], conditions[d, c])
+            images = train_set.unnormalize(images)   # If train_set.normalized=False, this won't do anything.
             generated_images[d, c] = images.squeeze(1).cpu().detach()   # remove batch dimension
 
 
