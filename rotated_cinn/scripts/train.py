@@ -21,7 +21,7 @@ from modules.loss import loss
 
 
 # Parameters
-save_path = path.package_directory + '/trained_models/normalized_data.pt'
+save_path = path.package_directory + '/trained_models/augmented_multi_domain.pt'
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 nll_mean = []
@@ -30,9 +30,8 @@ N_epochs = 60
 batch_size = 256
 learning_rate = 5e-4
 
-domains = [-23, 0, 23, 45, 90, 180]
-
-
+#domains = [-23, 0, 23, 45, 90, 180]
+domains = [0]
 
 # Main code
 ## set up model etc.
@@ -40,9 +39,8 @@ t_start = time()
 print("Setting up the model, data loader, etc...")
 
 cinn = Rotated_cINN().to(device)
-train_set = RotatedMNIST(domains=domains, train=True, seed=random_seed, val_set_size=1000)
-train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, 
-                           num_workers=8, pin_memory=True, drop_last=True)
+train_set = RotatedMNIST(domains=domains, train=True, seed=random_seed, val_set_size=1000, normalize=True, add_noise=True)
+train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
 optimizer = torch.optim.Adam(cinn.trainable_parameters, lr=learning_rate, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
 

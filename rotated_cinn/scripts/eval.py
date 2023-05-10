@@ -15,14 +15,18 @@ from modules.loss import loss
 
 
 # Parameters
-model_path = path.package_directory + "/trained_models/normalized_data.pt"
-analysis_path = path.package_directory + "/analysis/normalized_data"
+name = "augmented_multi_domain"
+model_path = path.package_directory + f"/trained_models/{name}.pt"
+analysis_path = path.package_directory + f"/analysis/{name}"
 path.makedir(analysis_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 
 train_domains = [-23, 0, 23, 45, 90, 180]
 test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
+#train_domains = [0, 0]
+#test_domains = [-23, 23, 45, 90, 180]
+
 samples_per_domain = 100
 number_of_copies = 3   # number of samples displayed for each domain and class in the visual comparision
 
@@ -102,9 +106,9 @@ if __name__ == "__main__":
     ### create cond tensor    
     conditions = torch.zeros((*grid_shape, 12))   # for each image, the external condition for the cINN needs to be created
     domains_sincos = RotatedMNIST._deg2sincos(train_domains)
-    conditions[:, :, :, :2] = domains_sincos[:, None, None, :]
+    conditions[..., :2] = domains_sincos[:, None, None, :]
     classes_onehot = torch.eye(10)
-    conditions[:, :, :, 2:] = classes_onehot[None, :, None, :]  
+    conditions[..., 2:] = classes_onehot[None, :, None, :]  
 
     ### cinn reverse
     latent_tensor = torch.randn((*grid_shape, 28 * 28))

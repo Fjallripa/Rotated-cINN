@@ -20,6 +20,9 @@ import path   # adds repo to PATH
 norm_mean = 0.1307   # Values taken from an unnormalized training set.
 norm_std  = 0.3082
 
+# Amplitude for the noise augmentation
+noise_std = 0.08
+
 
 
 # Main classes
@@ -28,16 +31,22 @@ class DomainMNIST(Dataset):
 
     '''
 
-    def __init__(self, domains: list[int], normalize: bool=False) -> None:
+    def __init__(self, domains: list[int], normalize: bool=False, add_noise: bool=False) -> None:
         super().__init__()
 
         # Set attributes
         self.domains = domains
         self.classes = list(range(10))
 
-        self.normalized = normalize   # If normalize=False (default), then normalize() and unnormalize() won't have any effect on the data.
+        ## Normalization
+            # If normalize=False (default), then normalize() and unnormalize() won't have any effect on the data.
+        self.normalized = normalize
         self.norm_mean = norm_mean  if self.normalized else  0.0
         self.norm_std  = norm_std   if self.normalized else  1.0
+
+        ## Data augmentation
+        self.noise_added = add_noise
+        self.noise_std = noise_std  if self.noise_added else  0.0
 
         ## Predefine attributes for subclasses
         self.data = None
@@ -51,6 +60,9 @@ class DomainMNIST(Dataset):
 
     def unnormalize(self, data: torch.Tensor) -> torch.Tensor:
         return data * self.norm_std + self.norm_mean
+    
+    def add_noise(self, data: torch.Tensor) -> torch.Tensor:
+        return data + self.noise_std * torch.randn_like(data)
 
 
     def __len__(self):
@@ -72,8 +84,8 @@ class RotatedMNIST(DomainMNIST):
 
     '''
 
-    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None, normalize: bool=False) -> None:
-        super().__init__(domains, normalize=normalize)
+    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None, normalize: bool=False, add_noise: bool=False) -> None:
+        super().__init__(domains, normalize=normalize, add_noise=add_noise)
 
         # Set attributes
         self.train = train
@@ -95,41 +107,51 @@ class RotatedMNIST(DomainMNIST):
         images = images.squeeze(1)   # remove the batch dimension
         
 
-        # Create domain indices
+        # Process the labels
+        ## Create domain indices
         domain_count = len(self.domains)
         domain_indices = torch.randint_like(class_labels, domain_count)
 
-        # Create the new domain & class label for the cINN
+        ## Create the new domain & class label for the cINN
         domains_sincos = self._deg2sincos(self.domains)
         classes_onehot = torch.eye(10)
         sincos_labels = domains_sincos[domain_indices]
         onehot_labels = classes_onehot[class_labels]
         cinn_labels = torch.cat((sincos_labels, onehot_labels), 1)
 
-        # Rotate the images according to their domain
+
+        # Process the images
+        ## Rotate the images according to their domain
         images_rotated = torch.zeros_like(images)
         rotations = torch.tensor(self.domains)[domain_indices]
         for i in range(len(images_rotated)):
             images_rotated[i] = self._rotate(images[i], int(rotations[i]))
 
-        # Normalize the images
+        ## Normalize the images
             # If self.normalized=False, this won't do anything.
-        images_rotated = self.normalize(images_rotated)
+        images_normalized = self.normalize(images_rotated)
+        
+        ## Add noise to the images
+            # If self.nois_added=False, this won't do anything.
+        images_augmented = self.add_noise(images_normalized)
+
+        cinn_images = images_augmented
+
 
         # Return results
         if self.train and self.val_set_size > 0:
-            cutoff = len(images_rotated) - self.val_set_size   # size of remaining training set
+            cutoff = len(cinn_images) - self.val_set_size   # size of remaining training set
             cut = lambda tensor: self._split(tensor, at=cutoff)
 
             # Create train and validation set
-            self.val = DomainMNIST(self.domains, normalize=self.normalized)   # create instance for validation set
-            self.data,          self.val.data          = cut(images_rotated)
+            self.val = DomainMNIST(self.domains, normalize=self.normalized, add_noise=self.noise_added)   # create instance for validation set
+            self.data,          self.val.data          = cut(cinn_images)
             self.targets,       self.val.targets       = cut(cinn_labels)
             self.domain_labels, self.val.domain_labels = cut(rotations)
             self.class_labels,  self.val.class_labels  = cut(class_labels)
         else:
             # Save train/test set
-            self.data          = images_rotated
+            self.data          = cinn_images
             self.targets       = cinn_labels
             self.domain_labels = rotations
             self.class_labels  = class_labels

@@ -30,3 +30,4 @@ tqdm 4.65.0
 
 # Experimental (may be temporary)
 seaborn 0.12.2          (includes pandas)
+lightning-trainable 0.2.0  (via https://github.com/LarsKue/lightning-trainable)
