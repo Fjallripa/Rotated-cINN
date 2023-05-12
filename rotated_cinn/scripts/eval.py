@@ -15,9 +15,9 @@ from modules import loss
 
 
 # Parameters
-name = "recreation_with_domains"
+name = "test_gpu"
 model_path = path.package_directory + f"/trained_models/{name}.pt"
-analysis_path = path.package_directory + f"/analysis/{name}_x"
+analysis_path = path.package_directory + f"/analysis/{name}"
 path.makedir(analysis_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
@@ -63,8 +63,8 @@ def get_per_domain_loss(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
         domain_indices = torch.argwhere(domain == dataset.domain_labels)
         used_indices = domain_indices[:number].squeeze(1)
         
-        data = dataset.data[used_indices]
-        targets = dataset.targets[used_indices]
+        data = dataset.data[used_indices].to(device)
+        targets = dataset.targets[used_indices].to(device)
         z, log_j = model(data, targets)
 
         mean, err = loss_function(z, log_j)
@@ -105,15 +105,16 @@ if __name__ == "__main__":
     grid_shape = (len(train_domains), len(train_set.classes), number_of_copies)
 
     ### create cond tensor    
-    conditions = torch.zeros((*grid_shape, 12))   # for each image, the external condition for the cINN needs to be created
+    conditions = torch.zeros((*grid_shape, 12)).to(device)   # for each image, the external condition for the cINN needs to be created
     domains_sincos = RotatedMNIST._deg2sincos(train_domains)
     conditions[..., :2] = domains_sincos[:, None, None, :]
     classes_onehot = torch.eye(10)
-    conditions[..., 2:] = classes_onehot[None, :, None, :]  
+    conditions[..., 2:] = classes_onehot[None, :, None, :]
+
 
     ### cinn reverse
-    latent_tensor = torch.randn((*grid_shape, 28 * 28))
-    generated_images = torch.zeros([*grid_shape, 28, 28])
+    latent_tensor = torch.randn((*grid_shape, 28 * 28)).to(device)
+    generated_images = torch.zeros([*grid_shape, 28, 28]).cpu()
     for d in range(grid_shape[0]):   # domains
         for c in range(grid_shape[1]):   # classes
             images, gradients = cinn.reverse(latent_tensor[d, c], conditions[d, c])

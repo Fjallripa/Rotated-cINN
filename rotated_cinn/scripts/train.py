@@ -22,7 +22,7 @@ from modules import loss
 
 
 # Parameters
-save_path = path.package_directory + '/trained_models/recreation_with_domains.pt'
+save_path = path.package_directory + '/trained_models/test_gpu.pt'
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 losses_mean = []
@@ -46,6 +46,9 @@ train_set = RotatedMNIST(domains=domains, train=True, seed=random_seed, val_set_
 train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
 optimizer = torch.optim.Adam(cinn.trainable_parameters, lr=learning_rate, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
+
+val_data = train_set.val.data.to(device)
+val_targets = train_set.val.targets.to(device)
 
 print(f"Setup time: {time() - t_start:.1f} s")
 print("")
@@ -76,7 +79,7 @@ for epoch in range(N_epochs):
         # print training stats for every 50th batch 
         if not i % 50:
             with torch.no_grad():
-                z, log_j = cinn(train_set.val.data, train_set.val.targets)
+                z, log_j = cinn(val_data, val_targets)
                 losses_val, _ = loss_function(z, log_j)
 
             print('{:3d}\t{:5d}/{:d}\t{:6.2f}\t{:8.3f}\t{:8.3f}\t{:.2e}'.format(
