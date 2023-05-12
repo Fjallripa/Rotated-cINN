@@ -31,12 +31,13 @@ class DomainMNIST(Dataset):
 
     '''
 
-    def __init__(self, domains: list[int], normalize: bool=False, add_noise: bool=False) -> None:
+    def __init__(self, domains: list[int], normalize: bool=False, add_noise: bool=False, transform=None) -> None:
         super().__init__()
 
         # Set attributes
         self.domains = domains
         self.classes = list(range(10))
+        self.transform = transform
 
         ## Normalization
             # If normalize=False (default), then normalize() and unnormalize() won't have any effect on the data.
@@ -75,6 +76,9 @@ class DomainMNIST(Dataset):
         angle = self.domain_labels[index]
         digit = self.class_labels[index]
 
+        if self.transform:
+            image = self.transform(image)
+
         return image, label, angle, digit
 
 
@@ -84,8 +88,8 @@ class RotatedMNIST(DomainMNIST):
 
     '''
 
-    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None, normalize: bool=False, add_noise: bool=False) -> None:
-        super().__init__(domains, normalize=normalize, add_noise=add_noise)
+    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None, normalize: bool=False, add_noise: bool=False, transform=None) -> None:
+        super().__init__(domains, normalize=normalize, add_noise=add_noise, transform=transform)
 
         # Set attributes
         self.train = train
@@ -132,7 +136,7 @@ class RotatedMNIST(DomainMNIST):
         images_normalized = self.normalize(images_rotated)
         
         ## Add noise to the images
-            # If self.nois_added=False, this won't do anything.
+            # If self.noise_added=False, this won't do anything.
         images_augmented = self.add_noise(images_normalized)
 
         cinn_images = images_augmented

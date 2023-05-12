@@ -11,24 +11,25 @@ import numpy as np
 import path   # adds repo to PATH
 from modules.model import Rotated_cINN
 from modules.data import RotatedMNIST
-from modules.loss import loss
+from modules import loss
 
 
 # Parameters
-name = "augmented_multi_domain"
+name = "recreation_with_domains"
 model_path = path.package_directory + f"/trained_models/{name}.pt"
-analysis_path = path.package_directory + f"/analysis/{name}"
+analysis_path = path.package_directory + f"/analysis/{name}_x"
 path.makedir(analysis_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
 
 train_domains = [-23, 0, 23, 45, 90, 180]
 test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
-#train_domains = [0, 0]
+#train_domains = [0]
 #test_domains = [-23, 23, 45, 90, 180]
+loss_function = loss.neg_loglikelihood
 
 samples_per_domain = 100
-number_of_copies = 3   # number of samples displayed for each domain and class in the visual comparision
+number_of_copies = 5   # number of samples displayed for each domain and class in the visual comparision
 
 # Main functions
 ## Plotting losses
@@ -66,7 +67,7 @@ def get_per_domain_loss(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
         targets = dataset.targets[used_indices]
         z, log_j = model(data, targets)
 
-        mean, err = loss('max_likelihood', z, log_j)
+        mean, err = loss_function(z, log_j)
         loss_info['mean'].append(float(mean))
         loss_info['err'].append(float(err))
 
@@ -86,8 +87,8 @@ if __name__ == "__main__":
 
     # Load datasets
     all_domains = sorted(train_domains + test_domains)
-    train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=1000)
-    test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed)
+    train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=1000, normalize=True, add_noise=True)
+    test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed, normalize=True, add_noise=False)
     
     # Calculate loss for each domain
     train_domain_loss = get_per_domain_loss(train_domains, train_set, cinn, samples_per_domain)
@@ -162,7 +163,7 @@ if __name__ == "__main__":
     subfigs = fig.subfigures(grid_shape[0], 1)
     
     for d in range(grid_shape[0]):   # "for d in domains"
-        figd = subfigs[d]
+        figd = subfigs[d]  if grid_shape[0] > 1 else  subfigs
         figd.suptitle(f"{train_domains[d]}°")
         sub = figd.subplots(1, 2)
 
