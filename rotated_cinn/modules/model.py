@@ -71,17 +71,17 @@ class Rotated_cINN(nn.Module):
 
 
 
-    def forward(self, x, c):
+    def forward(self, x, c, jac=True):
         '''
         turns an image x into a latent code z using the conditional input c
         '''
         
-        return self.cinn.forward(x, c)
+        return self.cinn.forward(x, c, jac=jac)
         
 
-    def reverse(self, z, c):
+    def reverse(self, z, c, jac=True):
         '''
         turns a latent code z into an image x using the conditional input c
         '''
         
-        return self.cinn(z, c, rev=True)
+        return self.cinn(z, c, rev=True, jac=jac)

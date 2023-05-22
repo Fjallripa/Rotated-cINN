@@ -7,6 +7,9 @@ import numpy
 import torch
 import torch.distributions as D
 
+import path
+from modules import mmd   # to be used as a submodule, not needed for this code
+
 
 # Parameters
 number_of_dimensions = 28 * 28   # the number of pixels of an MNIST image

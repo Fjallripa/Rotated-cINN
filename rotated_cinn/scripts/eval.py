@@ -122,7 +122,7 @@ def generate_image_grid(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
     for d in range(grid_shape[0]):   # domains
         for c in range(grid_shape[1]):   # classes
             with torch.no_grad():
-                images, _ = model.reverse(latent_tensor[d, c], conditions[d, c])
+                images = model.reverse(latent_tensor[d, c], conditions[d, c], jac=False)
                 images = dataset.unnormalize(images)   # If dataset.normalized=False, this won't do anything.
                 generated_images[d, c] = images.squeeze(1).cpu().detach()   # remove batch dimension
     
@@ -384,6 +384,39 @@ def plot_classification_accuracy(accuracies:torch.Tensor, domains:list[int]) -> 
     plt.show()
 
 
+
+## MMD Loss
+def calculate_mmd_losses(dataset:RotatedMNIST, model:Rotated_cINN) -> tuple[torch.Tensor]:
+    """
+    Arguments
+    ---------
+    dataset : RotatedMNIST
+        training or test set,
+        preferrably without data augmentation
+    model : Rotated_cINN
+        preferrably pre-trained
+
+    D = number of domains
+    
+    Returns
+    -------
+    """
+
+    D = len(dataset.domains)
+    domain_labels = dataset.domain_labels
+
+    for d in range(D):
+        indices = torch.argwhere(d == domain_labels).squeeze()
+        data = dataset.data[indices]
+        targets = dataset.targets[indices]
+        
+        with torch.zero_
+        latent_vectors, _ = model()
+    
+
+
+def plot_mmd_losses(mmd_values:tuple[torch.Tensor]) -> None:
+    pass
 
 
 
