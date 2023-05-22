@@ -22,11 +22,14 @@ from modules import loss
 
 
 # Parameters
-save_path = path.package_directory + '/trained_models/test_gpu.pt'
+## Model saving
+model_name = "test_gpu"   #! New name for each new training
+save_path = path.package_directory + f"/trained_models/{model_name}.pt"
+
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1
-losses_mean = []
 
+## Training settings
 N_epochs = 60
 batch_size = 256
 learning_rate = 5e-4
@@ -62,6 +65,7 @@ print('Epoch\tBatch/Total \tTime \ttraining loss \tval. loss \tlearning rate')
 
 
 ## run training loop
+losses_mean = []
 for epoch in range(N_epochs):
     for i, batch in enumerate(train_loader):   # for batches in training set
         # run model forward

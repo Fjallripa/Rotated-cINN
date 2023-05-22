@@ -7,5 +7,6 @@ reference_code/mnist_minimal_example/output/*
 
 rotated_cinn/trained_models/*
 rotated_cinn/analysis/*
+rotated_cinn/datasets/*.pt
 
 **/MNIST/raw/*

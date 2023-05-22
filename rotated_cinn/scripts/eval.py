@@ -5,8 +5,9 @@
 
 # Imports
 import torch
-import torch.distributions as D
+import torch.distributions as distributions
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 
 import path   # adds repo to PATH
@@ -18,20 +19,33 @@ from modules import loss
 
 # Parameters
 ## General Settings
-name = "recreation_with_domains"   #! New name for each new training
-
-model_path = path.package_directory + f"/trained_models/{name}.pt"
-analysis_path = f"/analysis/{name}x"
-save_path = path.package_directory + analysis_path
-path.makedir(save_path)
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1   # For more reproducability
 
+## Loading and saving
+### Model loading
+model_name = "recreation_with_domains"
+model_path = path.package_directory + f"/trained_models/{model_name}.pt"
+
+### Dataset loading or saving
+load_saved_datasets = False   # if False, they will be created in place
+save_datasets = True
+dataset_name = "eval_default"
+dataset_path = path.package_directory + "/datasets"
+if not load_saved_datasets:
+    train_domains = [-23, 0, 23, 45, 90, 180]
+    test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
+    #train_domains = [0]
+    #test_domains = [-23, 23, 45, 90, 180]
+
+### Saving the evaluation results
+save_analysis = True
+analysis_path = f"/analysis/{model_name}x"
+save_path = path.package_directory + analysis_path
+path.makedir(save_path)
+
+
 ## Eval Settings
-train_domains = [-23, 0, 23, 45, 90, 180]
-test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
-#train_domains = [0]
-#test_domains = [-23, 23, 45, 90, 180]
 loss_function = loss.neg_loglikelihood
 
 samples_per_domain = 100
@@ -70,6 +84,7 @@ def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
     plt.show()
 
 
+
 def get_per_domain_loss(domains:list[int], dataset:RotatedMNIST, model:Rotated_cINN, number:int) -> dict[list]:
     loss_info = {'angles':domains, 'mean':[], 'err':[]}
     for domain in domains:
@@ -85,6 +100,7 @@ def get_per_domain_loss(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
         loss_info['err'].append(float(err))
 
     return loss_info
+
 
 
 
@@ -113,6 +129,7 @@ def generate_image_grid(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
     return generated_images
 
 
+
 def sample_dataset_grid(domains:list[int], dataset:RotatedMNIST, model:Rotated_cINN) -> torch.Tensor:
     grid_shape = (len(domains), len(dataset.classes), number_of_copies)
 
@@ -136,6 +153,7 @@ def sample_dataset_grid(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
 
     # Sampling images for a grid of those pairs
     return dataset.data[all_domain_class_indices]
+
 
 
 def display_image_grid(sampled_images:torch.Tensor, generated_images:torch.Tensor, train:bool, domains:list[int]) -> None:
@@ -180,30 +198,190 @@ def display_image_grid(sampled_images:torch.Tensor, generated_images:torch.Tenso
 
 
 
+
 ## Classification
-def classify_classes(domains:list[int], dataset:RotatedMNIST, model:Rotated_cINN):
-    
-    # Encode dataset
-    data = dataset.data.to(device)
-    targets = dataset.data.to(device)
-    
-    #all_domain_indices = 
-    for domain in domains:
-        domain_indices = torch.argwhere(domain == dataset.domain_labels)
+def find_indices_for_each_label(labels:list[int], label_tensor:torch.Tensor) -> torch.Tensor:
+    """
+    creates a tensor with a row of indices for each label in the label_tensor
 
-    ## Create targets for each class
-    one_hot = torch.eye(10).to(device)  # class one-hot vectors
-    for c in dataset.classes:
-        c_targets = targets[:, 2:] = one_hot[c]
-        z, log_j = model(data, targets)
-
-
-    normal = D.Normal(0.0, 1.0).expand(z.shape[-1])
-    normal = D.Independent(normal, 1)
-    likelihood = torch.exp(normal.log_prob(z) + log_j)
+    Arguments
+    ---------
+    labels : list, dtype=int, shape=(L)
+    label_tensor: torch.Tensor, dtype=int, shape=(N)
     
-    class_prob = 0.1 * torch.ones(10)   # the naive class prior
-    image_prob = torch.sum(likelihood * class_prob, )
+    L = number of distinct labels
+    N = number of labels
+    M = number of the least common label in label_tensor
+
+    Returns
+    -------
+    label_indices : torch.Tensor, dtype=int(0..N-1), shape=(L, M)
+    """ 
+    
+
+    indices_for_all_labels = [torch.argwhere(label == label_tensor).squeeze()  for label in labels]   # label indeces grouped by label
+    min_label_size = min([int(len(label_indices))  for label_indices in indices_for_all_labels])   # M, min of length of each domain list
+    label_indices = torch.stack([label_indices[:min_label_size]  for label_indices in indices_for_all_labels], dim=0)   # shape=(L, M)
+    
+    return label_indices
+
+
+
+def classify_classes(dataset:RotatedMNIST, model:Rotated_cINN, log_progress:bool=False) -> torch.Tensor:
+    """
+    Arguments
+    ---------
+    dataset : RotatedMNIST
+        training or test set,
+        preferrably without data augmentation
+    model : Rotated_cINN
+        preferrably pre-trained
+    log_progress : bool=Fals
+
+
+    D = number of domains
+    C = number of classes
+    M = size of the smallest domain in dataset ('batch_size')
+
+    Returns
+    -------
+    accuracies : torch.Tensor, dtype=float(0..1), shape=(D, C)
+        classification accuracies of the model for each domain and class
+    """
+
+
+    # Sort the data set into batches of equal size for each domain
+    data, targets = dataset.data, dataset.targets
+    domains = dataset.domains   # list of domains as degrees of rotation (int)
+    domain_index_batches = find_indices_for_each_label(domains, dataset.domain_labels)   # shape=(D, M)
+    data_batches = data[domain_index_batches]   # shape=(D, M, 28, 28)
+    target_batches = targets[domain_index_batches]   # shape=(D, M, 12)
+    
+    D = len(domains)
+    C = 10
+    M = target_batches.shape[1]
+    
+
+    # Calculate the loglikelihoods for each class for images of each domain
+    one_hot = torch.eye(C)  # class one-hot vectors
+    loglikelihood_batches = torch.zeros((D, C, M))
+    for d in range(D):
+        for c in dataset.classes:
+            # Create targets for each class
+            cd_targets = target_batches[d]
+            cd_targets[:, 2:] = one_hot[c]
+            cd_targets = cd_targets.to(device)
+            
+            cd_data = data_batches[d]
+            cd_data = cd_data.to(device)
+            
+            # Encode the images of a domain with targets for each class
+            z, log_j = model(cd_data, cd_targets)
+            z, log_j = z.cpu().detach(), log_j.cpu().detach()
+            
+            # Calculate the likelihood of an image for each class.
+            normal = distributions.Normal(torch.zeros_like(z), torch.ones_like(z))
+            normal = distributions.Independent(normal, 1)
+            loglikelihood = normal.log_prob(z) + log_j   # log p(x | c, d), shape=(M)
+            loglikelihood_batches[d, c] = loglikelihood
+            
+            if log_progress:
+                print(f"\rclassification in progress: domain {d+1:2d}/{D}, class {c+1:2d}/{C}", end="")
+                if d+1==D and c+1==C:  print("")   # return at end of loop
+        
+
+    # Compute the classification accuracy wrt. classes and domains
+    ## Dataset labels and classifier label for each domain
+    class_batches  = dataset.class_labels[domain_index_batches]   # shape=(D, M)
+    choice_batches = torch.argmax(loglikelihood_batches, dim=1)   # classifier choice for each domain, shape=(D, M)
+        # choose the class with the largest loglikelihood (assumes a naive prior of 1/10 per class)
+
+    ## Convert the labels into one-hot vectors (enables class-wise accuracy figures)
+    one_hot = torch.eye(C, dtype=bool)
+    class_mask = one_hot[class_batches]   # shape=(D, M, C)
+    choice_mask = one_hot[choice_batches]   # shape=(D, M, C)
+    
+    ## Calculate the domain-class accuracy matrix
+    agreement_counts = (class_mask & choice_mask).sum(dim=1)   # shape=(D, C)
+        # counts for each domain and class how often the classifier choice was the same a the dataset label
+    class_counts = class_mask.sum(dim=1)   # shape=(D, C)
+        # counts for each domain and class how often that class appeared in the dataset labels
+    accuracies = agreement_counts / class_counts   # shape=(D, C)
+
+
+    return accuracies
+
+
+
+def plot_classification_accuracy(accuracies:torch.Tensor, domains:list[int]) -> None:
+    """
+    Arguments
+    ---------
+    accuracies : torch.Tensor, dtype=float, shape=(D, C)
+        classification accuracies of the model for each domain and class
+    domains : list, dtype=int, shape=(D)
+        list of domains as degrees of rotation
+    
+    
+    D = number of domains
+    C = number of classes
+
+
+    Source: This function was created in collaboration with chatGPT4.
+    """
+    
+
+    # Calculating the plotted values
+    accuracies = 100 * accuracies.T   # conversion to %, shape=(C, D)
+    margin_C = accuracies.mean(dim=1)  # average over domains, get class-wise accuracies, shape=(C)
+    margin_D = accuracies.mean(dim=0)  # average over classes, get domain-wise accuracies, shape=(D)
+    overall = accuracies.mean()  # overall average, get total classification accuracy, float
+
+
+    # Formatting the plot
+    C, D = accuracies.shape
+    labels_C = [f"'{i}'" for i in range(C)]   # class labels
+    labels_D = [f"{angle}°" for angle in domains]   # domain labels
+
+    fig, axes = plt.subplots(nrows=2, ncols=2,
+                            figsize=(D+1, C+1),   # +1 is for the labels to have space as well
+                            gridspec_kw={'height_ratios': [1, C], 
+                                        'width_ratios': [1, D],
+                                        'wspace': 0.05*(C+1)/(D+1), 
+                                        'hspace': 0.05})
+    fig.suptitle("Classification accuracy of Rotated cINN in %", y=1.0)
+    heatmap_kwargs = {'annot':True, 'fmt':" 4.1f", 'cbar':False, 'vmin':0, 'vmax':100}
+
+
+    # Plotting the accuracies as heatmaps
+    ## Domain- and class-wise accuracy heatmaps
+    sns.heatmap(accuracies, ax=axes[1, 1], xticklabels=False, yticklabels=False, **heatmap_kwargs)
+
+    ## Marginal heatmaps
+    margin_C_map = sns.heatmap(margin_C[:, None], ax=axes[1, 0], xticklabels=False, yticklabels=labels_C, **heatmap_kwargs)
+    margin_D_map = sns.heatmap(margin_D[None, :], ax=axes[0, 1], xticklabels=labels_D, yticklabels=False, **heatmap_kwargs)
+
+    ## Overall average
+    overall_map = sns.heatmap(torch.tensor([[overall]]), ax=axes[0, 0], xticklabels=False, yticklabels=False, **heatmap_kwargs)
+    overall_map.texts[0].set_weight('bold')
+    overall_map.texts[0].set_size(11)
+
+
+    # Format the labels correctly
+    ## Move ticks to the right and top
+    axes[1, 0].yaxis.tick_left()
+    axes[0, 1].xaxis.tick_top()
+
+    ## Set labels
+    axes[1, 0].set_ylabel('classes')
+    axes[0, 1].set_xlabel('domains')
+
+    ## Adjust the labels' positions
+    axes[1, 0].yaxis.set_label_position('left') 
+    axes[0, 1].xaxis.set_label_position('top') 
+
+
+    plt.show()
 
 
 
@@ -211,7 +389,7 @@ def classify_classes(domains:list[int], dataset:RotatedMNIST, model:Rotated_cINN
 
 # Main code
 if __name__ == "__main__":
-    print(f"Starting the evaluation of the model '{name}'")
+    print(f"Starting the evaluation of the model '{model_name}'")
     print(f"    Save location: ...{analysis_path}")
     print("")
 
@@ -226,9 +404,52 @@ if __name__ == "__main__":
 
     ## Load datasets
     print("Prep: Loading training and test datasets")
-    all_domains = sorted(train_domains + test_domains)
-    train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=1000, normalize=True, add_noise=True)
-    test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed, normalize=True, add_noise=False)
+    if load_saved_datasets:
+        # Load saved datasets
+        train_set = torch.load(f"{dataset_path}/train_set.pt")
+        test_set = torch.load(f"{dataset_path}/test_set.pt")
+        train_domains = train_set.domains
+        test_domains = test_set.domains
+        all_domains = sorted(train_domains + test_domains)
+    else:
+        # Load new datasets
+        all_domains = sorted(train_domains + test_domains)
+        train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=1000, normalize=True, add_noise=False)
+        test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed, normalize=True, add_noise=False)
+        
+    """
+    ### Shorten datasets
+    new_length = 1000
+
+    train_set.data = train_set.data[:new_length]
+    train_set.targets = train_set.targets[:new_length]
+    train_set.class_labels = train_set.class_labels[:new_length]
+    train_set.domain_labels = train_set.domain_labels[:new_length] 
+    
+    test_set.data = test_set.data[:new_length]
+    test_set.targets = test_set.targets[:new_length]
+    test_set.class_labels = test_set.class_labels[:new_length]
+    test_set.domain_labels = test_set.domain_labels[:new_length] 
+    """
+
+    ## Save datasets
+    if save_datasets:
+        torch.save(train_set, f"{dataset_path}/train_{dataset_name}.pt")
+        torch.save(test_set, f"{dataset_path}/test_{dataset_name}.pt")
+    
+
+    # Calculating accuracies
+    print("Eval: Using the model as a classifier and plotting its accuracies over classes and domains")
+    # Train set
+    print("      Training set and training domains")
+    accuracies = classify_classes(train_set, cinn, log_progress=True)
+    plot_classification_accuracy(accuracies, train_set.domains)
+
+    
+    ## Test set
+    print("      Test set and all domains")
+    accuracies = classify_classes(test_set, cinn, log_progress=True)
+    plot_classification_accuracy(accuracies, test_set.domains)
     
     
     # Calculating losses
@@ -244,14 +465,15 @@ if __name__ == "__main__":
 
 
     # Compare dataset images to generated ones
+    print("Eval: Displaying dataset images next to generated ones")
     ## Train set
-    print("Eval: Displaying training set images next to generated ones")
+    print("      Training set and training domains")
     generated_images = generate_image_grid(train_domains, train_set, cinn)   # Generate images from cinn
     sampled_images = sample_dataset_grid(train_domains, train_set, cinn)     # Sample from dataset
     display_image_grid(sampled_images, generated_images, True, train_domains)   # Display them side by side
     
     ## Test set
-    print("Eval: Displaying test set images next to generated ones")
+    print("      Test set and test domains")
     generated_images = generate_image_grid(test_domains, test_set, cinn)
     sampled_images = sample_dataset_grid(test_domains, test_set, cinn)
     display_image_grid(sampled_images, generated_images, False, test_domains)
