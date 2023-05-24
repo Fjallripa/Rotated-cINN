@@ -28,8 +28,8 @@ model_name = "recreation_with_domains"
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 ### Dataset loading or saving
-load_saved_datasets = False   # if False, they will be created in place
-save_datasets = True
+load_saved_datasets = True   # if False, they will be created in place
+save_datasets = False
 dataset_name = "eval_default"
 dataset_path = path.package_directory + "/datasets"
 if not load_saved_datasets:
@@ -122,7 +122,7 @@ def generate_image_grid(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
     for d in range(grid_shape[0]):   # domains
         for c in range(grid_shape[1]):   # classes
             with torch.no_grad():
-                images = model.reverse(latent_tensor[d, c], conditions[d, c], jac=False)
+                images, _ = model.reverse(latent_tensor[d, c], conditions[d, c], jac=False)
                 images = dataset.unnormalize(images)   # If dataset.normalized=False, this won't do anything.
                 generated_images[d, c] = images.squeeze(1).cpu().detach()   # remove batch dimension
     
@@ -286,7 +286,7 @@ def classify_classes(dataset:RotatedMNIST, model:Rotated_cINN, log_progress:bool
             loglikelihood_batches[d, c] = loglikelihood
             
             if log_progress:
-                print(f"\rclassification in progress: domain {d+1:2d}/{D}, class {c+1:2d}/{C}", end="")
+                print(f"\r    classification in progress: domain {d+1:2d}/{D}, class {c+1:2d}/{C}", end="")
                 if d+1==D and c+1==C:  print("")   # return at end of loop
         
 
@@ -313,7 +313,7 @@ def classify_classes(dataset:RotatedMNIST, model:Rotated_cINN, log_progress:bool
 
 
 
-def plot_classification_accuracy(accuracies:torch.Tensor, domains:list[int]) -> None:
+def plot_classification_accuracy(accuracies:torch.Tensor, domains:list[int], train:bool) -> None:
     """
     Arguments
     ---------
@@ -321,6 +321,9 @@ def plot_classification_accuracy(accuracies:torch.Tensor, domains:list[int]) -> 
         classification accuracies of the model for each domain and class
     domains : list, dtype=int, shape=(D)
         list of domains as degrees of rotation
+    train : bool
+        if True, save as '...train.png',
+        else as '...test.png'
     
     
     D = number of domains
@@ -380,14 +383,20 @@ def plot_classification_accuracy(accuracies:torch.Tensor, domains:list[int]) -> 
     axes[1, 0].yaxis.set_label_position('left') 
     axes[0, 1].xaxis.set_label_position('top') 
 
-
+    # Saving the plot
+    suffix = 'train'  if train else  'test'
+    save_name = f"/classification_{suffix}.png"
+    print(f"    Saving plot as {save_name}")
+    plt.savefig(save_path + save_name)
     plt.show()
 
 
 
 ## MMD Loss
-def calculate_mmd_losses(dataset:RotatedMNIST, model:Rotated_cINN) -> tuple[torch.Tensor]:
+def calculate_mmd_losses(dataset:RotatedMNIST, model:Rotated_cINN, mmd_funcs:list) -> dict[tuple[float, np.ndarray]]:
     """
+    calculates MMD values for multiple loss.mmd functions, both for the whole dataset and domain-wise.
+
     Arguments
     ---------
     dataset : RotatedMNIST
@@ -395,28 +404,124 @@ def calculate_mmd_losses(dataset:RotatedMNIST, model:Rotated_cINN) -> tuple[torc
         preferrably without data augmentation
     model : Rotated_cINN
         preferrably pre-trained
+    mmd_funcs : list of loss.mmd functions
 
     D = number of domains
     
     Returns
     -------
+    all_mmds : dict 
+        * each key is the name of one of the loss.mmd functions
+        * each value is a tuple of a float and a numpy array (shape=(D), dtype=float).
+        * the first float is the MMD value of the whole dataset while the array contains the MMD values for each domain of the dataset.
     """
 
-    D = len(dataset.domains)
-    domain_labels = dataset.domain_labels
 
-    for d in range(D):
-        indices = torch.argwhere(d == domain_labels).squeeze()
-        data = dataset.data[indices]
-        targets = dataset.targets[indices]
+    D = len(dataset.domains)
+    
+    # For each domain, find which dataset elements belong to that domain
+    domain_labels = dataset.domain_labels
+    indices_of_domain = [torch.argwhere(d == domain_labels).squeeze()  for d in dataset.domains]   
+
+
+    all_mmds = {}
+    # Calculate MMD values for each function
+    for func in mmd_funcs:
+        # Calculate a reference value
+        random_vectors_1 = torch.randn((len(dataset)//14, 28*28))
+        random_vectors = torch.randn_like(random_vectors_1)
+        mmd_reference = func(random_vectors_1, random_vectors)
+
+        # Calculate for the whole dataset
+        with torch.no_grad():
+            data = dataset.data.to(device)
+            targets = dataset.targets.to(device)
+            
+            latent_vectors, _ = model.forward(data, targets, jac=False)
+            random_vectors = torch.randn_like(latent_vectors)
         
-        with torch.zero_
-        latent_vectors, _ = model()
+            mmd_global = func(latent_vectors, random_vectors)
+
+        # Calculate for each domain
+        mmd_domain = np.zeros(D)
+        for d in range(D):
+            with torch.no_grad():
+                data = dataset.data[indices_of_domain[d]].to(device)
+                targets = dataset.targets[indices_of_domain[d]].to(device)
+                
+                latent_vectors, _ = model.forward(data, targets, jac=False)
+                random_vectors = torch.randn_like(latent_vectors)
+            
+                mmd_domain[d] = func(latent_vectors, random_vectors)
+
+        # Store the results in a dictionary
+        all_mmds[func.__name__] = (mmd_global, mmd_domain, mmd_reference)
+
+
+    return all_mmds
+
     
 
 
-def plot_mmd_losses(mmd_values:tuple[torch.Tensor]) -> None:
-    pass
+def plot_mmd_losses(mmd_values:dict[tuple[float, np.ndarray]], train_domains:list[int], test_domains:list[int]) -> None:
+    """
+    presents the `mmd_values` for each domain as one bar plot for each function of `mmd_values`. 
+
+    Arguments
+    ---------
+    mmd_values : dict
+        * each key is the name of one of the F loss.mmd functions
+        * each value is a tuple of a float and a numpy array (shape=(D), dtype=float).
+        * the first float is the MMD value of the whole dataset while the array contains the MMD values for each domain of the dataset.
+    train_domains: list of ints (rotation angles)
+    test_domains: list (same)
+
+    F = number of functions
+    D = length of training and test domains combined
+    """
+    
+
+    # Create x-axis labels ('global' + each domain) and indices for train and test domains
+    domains_sorted = sorted(train_domains + test_domains)
+    train_indices = np.array([domains_sorted.index(d)  for d in train_domains])
+    test_indices = np.array([domains_sorted.index(d)  for d in test_domains])
+    x_labels = ["global"] + [f"{angle}°"  for angle in domains_sorted]
+    
+    F = len(mmd_values.keys())
+    D = len(domains_sorted)
+
+
+    # Plot a bar plot for the MMD values of each function over all domains
+    plt.figure(figsize=(6, 4*F), constrained_layout=True)
+    plt.suptitle("Maximum Mean Discrepancy between\nthe cINN latent space and the normal distribution")
+    
+    for f, func in enumerate(mmd_values.keys()):
+        plt.subplot(F, 1, f+1)
+        mmd_global = [mmd_values[func][0]]   # [float]
+        mmd_train = mmd_values[func][1][train_indices]
+        mmd_test = mmd_values[func][1][test_indices]
+        mmd_reference = mmd_values[func][2]
+
+        plt.title(f"mmd.{func}()")
+        plt.bar([0], mmd_global, color='black', label="whole dataset")
+        plt.bar(train_indices+1, mmd_train, label="training domains")
+        plt.bar(test_indices+1, mmd_test, label="test_domains")
+        plt.hlines([mmd_reference], xmin=0, xmax=D, colors='grey', linestyles='dashed', label="normal distribution (ideal)")
+        plt.ylim(0, 1.1*max(mmd_values[func][1]))  # between 0 and largest bar
+        plt.xticks(range(D+1), x_labels, rotation=45)
+        plt.xlabel("domains")
+        plt.ylabel("MMD values")
+        plt.legend()
+
+
+    # Save the plot
+    save_name = f"/mmd_losses.png"
+    print(f"    Saving plot as {save_name}")
+    plt.savefig(save_path + save_name)
+    plt.show()
+    
+
+
 
 
 
@@ -439,11 +544,11 @@ if __name__ == "__main__":
     print("Prep: Loading training and test datasets")
     if load_saved_datasets:
         # Load saved datasets
-        train_set = torch.load(f"{dataset_path}/train_set.pt")
-        test_set = torch.load(f"{dataset_path}/test_set.pt")
+        train_set = torch.load(f"{dataset_path}/train_{dataset_name}.pt")
+        test_set = torch.load(f"{dataset_path}/test_{dataset_name}.pt")
         train_domains = train_set.domains
-        test_domains = test_set.domains
-        all_domains = sorted(train_domains + test_domains)
+        test_domains = [domain  for domain in test_set.domains  if (domain not in train_domains)]
+        all_domains = test_set.domains
     else:
         # Load new datasets
         all_domains = sorted(train_domains + test_domains)
@@ -470,24 +575,10 @@ if __name__ == "__main__":
         torch.save(train_set, f"{dataset_path}/train_{dataset_name}.pt")
         torch.save(test_set, f"{dataset_path}/test_{dataset_name}.pt")
     
-
-    # Calculating accuracies
-    print("Eval: Using the model as a classifier and plotting its accuracies over classes and domains")
-    # Train set
-    print("      Training set and training domains")
-    accuracies = classify_classes(train_set, cinn, log_progress=True)
-    plot_classification_accuracy(accuracies, train_set.domains)
-
-    
-    ## Test set
-    print("      Test set and all domains")
-    accuracies = classify_classes(test_set, cinn, log_progress=True)
-    plot_classification_accuracy(accuracies, test_set.domains)
-    
     
     # Calculating losses
     print("")
-    print("Eval: Creating a domain-wise loss plot")
+    print("\nEval: Creating a domain-wise loss plot")
     
     ## Calculate loss for each domain
     train_domain_loss = get_per_domain_loss(train_domains, train_set, cinn, samples_per_domain)
@@ -498,15 +589,34 @@ if __name__ == "__main__":
 
 
     # Compare dataset images to generated ones
-    print("Eval: Displaying dataset images next to generated ones")
+    print("\nEval: Displaying dataset images next to generated ones")
     ## Train set
-    print("      Training set and training domains")
+    print("  Training set and training domains")
     generated_images = generate_image_grid(train_domains, train_set, cinn)   # Generate images from cinn
     sampled_images = sample_dataset_grid(train_domains, train_set, cinn)     # Sample from dataset
     display_image_grid(sampled_images, generated_images, True, train_domains)   # Display them side by side
     
     ## Test set
-    print("      Test set and test domains")
+    print("  Test set and test domains")
     generated_images = generate_image_grid(test_domains, test_set, cinn)
     sampled_images = sample_dataset_grid(test_domains, test_set, cinn)
     display_image_grid(sampled_images, generated_images, False, test_domains)
+
+
+    # Calculate MMD losses
+    print("\nEval: Compare the model's latent space to a normal distribution via different MMD functions")
+    mmd_values = calculate_mmd_losses(test_set, cinn, mmd_funcs=[loss.mmd.mean, loss.mmd.var])
+    plot_mmd_losses(mmd_values, train_domains, test_domains)
+    
+
+    # Calculating accuracies
+    print("\nEval: Using the model as a classifier and plotting its accuracies over classes and domains")
+    ## Train set
+    print("  Training set and training domains")
+    accuracies = classify_classes(train_set, cinn, log_progress=True)
+    plot_classification_accuracy(accuracies, train_set.domains, train=True)
+    
+    ## Test set
+    print("  Test set and all domains")
+    accuracies = classify_classes(test_set, cinn, log_progress=True)
+    plot_classification_accuracy(accuracies, test_set.domains, train=False)
