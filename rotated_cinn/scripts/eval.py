@@ -33,14 +33,15 @@ save_datasets = False
 dataset_name = "eval_default"
 dataset_path = path.package_directory + "/datasets"
 if not load_saved_datasets:
-    train_domains = [-23, 0, 23, 45, 90, 180]
-    test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
-    #train_domains = [0]
+    #train_domains = [-23, 0, 23, 45, 90, 180]
+    #test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
+    train_domains = [0]
+    test_domains = [0]
     #test_domains = [-23, 23, 45, 90, 180]
 
 ### Saving the evaluation results
 save_analysis = True
-analysis_path = f"/analysis/{model_name}x"
+analysis_path = f"/analysis/{model_name}"
 save_path = path.package_directory + analysis_path
 path.makedir(save_path)
 
@@ -110,7 +111,7 @@ def generate_image_grid(domains:list[int], dataset:RotatedMNIST, model:Rotated_c
 
     # create conditions tensor    
     conditions = torch.zeros((*grid_shape, 12)).to(device)   # for each image, the external condition for the cINN needs to be created
-    domains_sincos = RotatedMNIST._deg2sincos(domains)
+    domains_sincos = RotatedMNIST.deg2cossin(domains)
     conditions[..., :2] = domains_sincos[:, None, None, :]
     classes_onehot = torch.eye(10)
     conditions[..., 2:] = classes_onehot[None, :, None, :]
@@ -392,6 +393,7 @@ def plot_classification_accuracy(accuracies:torch.Tensor, domains:list[int], tra
 
 
 
+
 ## MMD Loss
 def calculate_mmd_losses(dataset:RotatedMNIST, model:Rotated_cINN, mmd_funcs:list) -> dict[tuple[float, np.ndarray]]:
     """
@@ -462,7 +464,6 @@ def calculate_mmd_losses(dataset:RotatedMNIST, model:Rotated_cINN, mmd_funcs:lis
 
     
 
-
 def plot_mmd_losses(mmd_values:dict[tuple[float, np.ndarray]], train_domains:list[int], test_domains:list[int]) -> None:
     """
     presents the `mmd_values` for each domain as one bar plot for each function of `mmd_values`. 
@@ -523,6 +524,140 @@ def plot_mmd_losses(mmd_values:dict[tuple[float, np.ndarray]], train_domains:lis
 
 
 
+## Domain Transfer
+def domain_transfer(model:Rotated_cINN, data:torch.Tensor, targets:torch.Tensor, angles:list):
+    """
+    Arguments
+    ---------
+    model : Rotated_cINN
+    data : torch.Tensor, shape=(N, H, W)
+    targets: torch.Tensor, shape=(N, 12)
+    angles : list, dtype= int or float, shape=(N)
+
+    N = number of angles
+    H, W = height and width of image
+
+    Returns
+    -------
+    data_rotated : torch.Tensor, shape=(N, H, W)
+    data_reconstructed : torch.Tensor, shape=(N, H, W)
+    """
+
+    data_rotated = RotatedMNIST.rotate(data, angles)
+    targets_rotated = torch.cat([RotatedMNIST.deg2cossin(angles), targets[:, 2:]], dim=1)
+    latent_vectors = model.forward(RotatedMNIST._normalize(data), targets)[0]
+    data_reconstructed = RotatedMNIST._unnormalize(model.reverse(latent_vectors, targets_rotated)[0].squeeze())
+
+    return data_rotated, data_reconstructed
+
+
+
+def plot_transfer_image(rotated:torch.Tensor, reconstructed:torch, angles):
+    """
+    Arguments
+    ---------
+    data_rotated : torch.Tensor, shape=(N, H, W)
+    data_reconstructed : torch.Tensor, shape=(N, H, W)
+    angles : list, shape=(N)
+
+    N = number of angles
+    H, W = height and width of image
+    """
+
+    def show_range(img:np.ndarray) -> None:
+        plt.text( 1, 27, f"{np.min(img): 4.1f}", color='white', fontsize=10)
+        plt.text(12, 27, f"{np.median(img): 4.1f}", color='white', fontsize=10)
+        plt.text(23, 27, f"{np.max(img): 4.1f}", color='white', fontsize=10)
+    
+    N = len(angles)
+
+    plt.figure(figsize=(3*3*3, (N*3)//3))
+    plt.suptitle(f"Examples of Domain Transfer", y=1.0)
+    rot = rotated.detach().numpy()
+    rec = reconstructed.detach().numpy()
+    dif = (rotated - reconstructed).detach().numpy()
+
+    for i, angle in enumerate(angles):
+        plt.subplot(N//3, 3*3, 3 * ((i*3)//N + (i*3)%N) + 1)
+        plt.imshow(rot[i])
+        plt.text(20, 2, f"{angle: 3d}°", color='white', fontweight='bold', fontsize=15)
+        plt.axis('off')
+        
+        plt.subplot(N//3, 3*3, 3 * ((i*3)//N + (i*3)%N) + 2)
+        plt.imshow(rec[i])
+        show_range(rec[i])
+        plt.axis('off')
+        
+        plt.subplot(N//3, 3*3, 3 * ((i*3)//N + (i*3)%N) + 3)
+        plt.imshow(dif[i])
+        show_range(dif[i])
+        plt.axis('off')
+
+    plt.tight_layout()
+    
+    # Save the plot
+    save_name = f"/domain_transfer_examples.png"
+    print(f"    Saving plot as {save_name}")
+    plt.savefig(save_path + save_name)
+    plt.show()
+    
+
+
+
+def plot_transfer_loss(model:Rotated_cINN, data:torch.Tensor, targets:torch.Tensor, interval:int, train_domains=None, test_domains=None):
+    """
+    Arguments
+    ---------
+    model : Rotated_cINN
+    data : torch.Tensor, shape=(N, H, W)
+    targets : torch.Tensor, shape=(N, 12)
+    interval : int, number of degrees between each bar
+
+
+    N = number of images to average over
+    A = N // interval, number of angles for whicht to to calculate a loss
+    H, W = height and width of image
+    """
+    
+    degree_range = np.array(range(-179, 181, interval))
+    A = len(degree_range)
+    transfer_losses = np.zeros(A)
+    
+    for i, degree in enumerate(degree_range):
+        with torch.no_grad():
+            print(f"\r    calculating loss for {degree}°", end=" ")
+            degrees = degree * torch.ones(len(data))
+            
+            data_rotated, data_reconstructed = domain_transfer(model, data, targets, degrees)
+
+            l1_loss = torch.mean(torch.abs(data_rotated - data_reconstructed))
+            transfer_losses[i] = l1_loss.detach().numpy()
+    print("\r")
+
+
+    plt.figure(figsize=(15, 3))
+    plt.bar(degree_range, transfer_losses, width=interval)
+    if train_domains != None:
+        i_train = np.argwhere((degree_range[:, None] == np.array(train_domains)[None]).any(1))[:,0]
+        plt.bar(degree_range[i_train], transfer_losses[i_train], width=interval, label='training domains')
+    if test_domains != None:
+        i_test = np.argwhere((degree_range[:, None] == np.array(test_domains)[None]).any(1))[:,0]
+        plt.bar(degree_range[i_test], transfer_losses[i_test], width=interval, color="red", label="test domains")
+
+    plt.legend()
+    plt.xlabel("rotation angle [°]")
+    plt.ylabel("mean(abs(rotated - reconstructed))")
+    plt.title("L1 loss of domain transfer")
+
+    # Save the plot
+    save_name = f"/domain_transfer_barplot.png"
+    print(f"    Saving plot as {save_name}")
+    plt.savefig(save_path + save_name)
+    plt.show()
+    
+
+
+
 
 
 # Main code
@@ -547,13 +682,13 @@ if __name__ == "__main__":
         train_set = torch.load(f"{dataset_path}/train_{dataset_name}.pt")
         test_set = torch.load(f"{dataset_path}/test_{dataset_name}.pt")
         train_domains = train_set.domains
-        test_domains = [domain  for domain in test_set.domains  if (domain not in train_domains)]
         all_domains = test_set.domains
+        test_domains = sorted(set(all_domains) - set(train_domains))   # the domains that are not training domains
     else:
-        # Load new datasets
-        all_domains = sorted(train_domains + test_domains)
-        train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=1000, normalize=True, add_noise=False)
-        test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed, normalize=True, add_noise=False)
+        # Create new datasets
+        all_domains = sorted(set(train_domains) | set(test_domains))   # all unique angles, sorted
+        train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=0, normalize=False, add_noise=False)
+        test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed, normalize=False, add_noise=False)
         
     """
     ### Shorten datasets
@@ -620,3 +755,17 @@ if __name__ == "__main__":
     print("  Test set and all domains")
     accuracies = classify_classes(test_set, cinn, log_progress=True)
     plot_classification_accuracy(accuracies, test_set.domains, train=False)
+    
+    
+    # Domain Transfer
+    ## Creating domain transfer examples
+    test_mnist = torch.load(f"{dataset_path}/test_eval_og_mnist.pt")
+    data, targets, *_ = test_mnist[:100]
+    interval = 15  # degrees
+    angles = torch.tensor(range(-180, 180, interval))
+    
+    drot, drec = domain_transfer(cinn, data[:360//interval], targets[:360//interval], angles)
+    plot_transfer_image(drot, drec, angles)
+
+    ## Measuring domain transfer loss over all angles
+    plot_transfer_loss(cinn, data, targets, 1, train_domains, test_domains)

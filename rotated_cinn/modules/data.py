@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
+from torchvision.transforms import InterpolationMode as I 
 
 import path   # adds repo to PATH
 
@@ -54,6 +55,15 @@ class DomainMNIST(Dataset):
         self.targets = None
         self.domain_labels = None
         self.class_labels = None
+
+    @classmethod
+    def _normalize(self, data: torch.Tensor) -> torch.Tensor:
+        return (data - norm_mean) / norm_std
+
+    @classmethod
+    def _unnormalize(self, data: torch.Tensor) -> torch.Tensor:
+        return data * norm_std + norm_mean
+    
 
 
     def normalize(self, data: torch.Tensor) -> torch.Tensor:
@@ -117,7 +127,7 @@ class RotatedMNIST(DomainMNIST):
         domain_indices = torch.randint_like(class_labels, domain_count)
 
         ## Create the new domain & class label for the cINN
-        domains_sincos = self._deg2sincos(self.domains)
+        domains_sincos = self.deg2cossin(self.domains)
         classes_onehot = torch.eye(10)
         sincos_labels = domains_sincos[domain_indices]
         onehot_labels = classes_onehot[class_labels]
@@ -126,10 +136,11 @@ class RotatedMNIST(DomainMNIST):
 
         # Process the images
         ## Rotate the images according to their domain
-        images_rotated = torch.zeros_like(images)
         rotations = torch.tensor(self.domains)[domain_indices]
-        for i in range(len(images_rotated)):
-            images_rotated[i] = self._rotate(images[i], int(rotations[i]))
+        images_rotated = self.rotate(images, rotations)
+        #images_rotated = torch.zeros_like(images)
+        #for i in range(len(images_rotated)):
+        #    images_rotated[i] = self._rotate(images[i], int(rotations[i]))
 
         ## Normalize the images
             # If self.normalized=False, this won't do anything.
@@ -162,19 +173,49 @@ class RotatedMNIST(DomainMNIST):
 
 
     @staticmethod
-    def _deg2sincos(degrees:torch.Tensor) -> torch.Tensor:
-        return torch.tensor(
-            [[np.cos(angle), np.sin(angle)]  for angle in np.deg2rad(degrees)],
-            dtype = torch.float32
-        )
+    def deg2cossin(degrees:list | torch.Tensor) -> torch.Tensor:
+        """
+        converts a sequence of degrees into a tensor of cosine and sine values
+
+        Arguments
+        ---------
+        degrees : list or tensor of angles in degrees, shape=(N)
+
+        N = length of degree sequence
+
+        Returns :
+        --------
+        cossin : torch.Tensor, shape=(N, 2)
+            [[cos(angle_0), sin(angle_0)], [cos(angle_1), ...], ...]
+        """
+
+
+        degrees = torch.Tensor(degrees)
+        return torch.stack([degrees.deg2rad().cos(), degrees.deg2rad().sin()], dim=1)
 
 
     @staticmethod
-    def _rotate(image:torch.Tensor, degrees:int) -> torch.Tensor:
-        to_pil = transforms.ToPILImage()
-        to_tensor = transforms.ToTensor()
+    def rotate(images:torch.Tensor, degrees:list | torch.Tensor) -> torch.Tensor:
+        """
+        rotates a batch of 2D images by a list of degrees
 
-        return to_tensor(transforms.functional.rotate(to_pil(image), degrees))
+        Arguments
+        ---------
+        images : torch.Tensor, shape=(N, A, B)
+        degrees: list or tensor of ints, shape=(N)
+
+        N = number of images and degrees
+        A, B = height and width of the images
+
+        Returns
+        -------
+        rotated_images : torch.Tensor, shape=(N, A, B)
+            the nth image is is rotated by the nth degree from the list
+        """
+        
+
+        fill_value = float(images.min())
+        return torch.cat([transforms.functional.rotate(image[None], float(degree), fill=fill_value, interpolation=I.BILINEAR)  for image, degree in zip(images, degrees)], dim=0)
 
 
     @staticmethod

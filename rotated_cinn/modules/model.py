@@ -71,7 +71,7 @@ class Rotated_cINN(nn.Module):
 
 
 
-    def forward(self, x, c, jac=True):
+    def forward(self, x:torch.Tensor, c:torch.Tensor, jac:bool=True) -> tuple[torch.Tensor]:
         '''
         turns an image x into a latent code z using the conditional input c
         '''
@@ -79,7 +79,7 @@ class Rotated_cINN(nn.Module):
         return self.cinn.forward(x, c, jac=jac)
         
 
-    def reverse(self, z, c, jac=True):
+    def reverse(self, z:torch.Tensor, c:torch.Tensor, jac:bool=True) -> tuple[torch.Tensor]:
         '''
         turns a latent code z into an image x using the conditional input c
         '''
