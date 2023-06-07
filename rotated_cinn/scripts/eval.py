@@ -24,7 +24,7 @@ random_seed = 1   # For more reproducability
 
 ## Loading and saving
 ### Model loading
-model_name = "recreation_biquintic"
+model_name = "new_initialization_2"
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 ### Dataset loading or saving
@@ -58,6 +58,31 @@ number_of_copies = 5   # number of samples displayed for each domain and class i
 
 # Main functions
 ## Plotting losses
+def plot_training_losses() -> None:
+    loss_path = save_path + "/training_losses.npz"
+    if not path.os.path.exists(loss_path):
+        print("    no training losses found.")
+        return
+    
+    # Loading the losses
+    losses = dict(np.load(loss_path))
+    N_epochs = len(list(losses.items())[0][1])  # length of one of the loss arrays = number of epochs trained
+    epochs = np.arange(N_epochs) + 1
+
+    # Plotting the losses
+    plt.title("Training losses")
+    for loss_name, loss_array in losses.items():
+        plt.plot(epochs, loss_array, label=loss_name)
+    plt.xlabel("epoch")
+    plt.legend()
+
+    # Saving the plot
+    save_name = "/training_losses.png"
+    print(f"    Saving plot as {save_name}")
+    plt.savefig(save_path + save_name)
+    plt.show()
+
+
 def show_domain_bar_plot(train_loss:dict[list], test_loss:dict[list]) -> None:
 
     fig, ax = plt.subplots(layout='constrained')
@@ -708,10 +733,15 @@ if __name__ == "__main__":
     
     
     # Calculating losses
-    print("")
-    print("\nEval: Creating a domain-wise loss plot")
     
+    ## Show the training losses
+    print("")
+    print("\nEval: Displaying the training losses")
+    plot_training_losses()
+
+
     ## Calculate loss for each domain
+    print("\nEval: Creating a domain-wise loss plot")
     train_domain_loss = get_per_domain_loss(train_domains, train_set, cinn, samples_per_domain)
     test_domain_loss = get_per_domain_loss(all_domains, test_set, cinn, samples_per_domain)
 

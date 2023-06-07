@@ -266,3 +266,19 @@ class RotatedMNIST(DomainMNIST):
         tensor_b = tensor_b.detach().clone()
 
         return tensor_a, tensor_b
+    
+
+# Noise augmentation class to be used as a torch.transform
+class AddGaussianNoise(object):
+    """
+    code from https://discuss.pytorch.org/t/how-to-add-noise-to-mnist-dataset-when-using-pytorch/59745
+    """
+    def __init__(self, mean=0., std=1.):
+        self.std = std
+        self.mean = mean
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+    
+    def __repr__(self):
+        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
