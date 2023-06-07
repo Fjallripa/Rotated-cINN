@@ -11,7 +11,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
-from torchvision.transforms import InterpolationMode as I 
+import skimage.transform
+#import scipy.ndimage
+#from torchvision.transforms import InterpolationMode as I 
 
 import path   # adds repo to PATH
 
@@ -107,7 +109,7 @@ class RotatedMNIST(DomainMNIST):
 
     '''
 
-    def __init__(self, 
+    def __init__(self,
                  domains: list[int], 
                  train: bool, 
                  val_set_size: int=0, 
@@ -232,11 +234,27 @@ class RotatedMNIST(DomainMNIST):
             the nth image is is rotated by the nth degree from the list
         """
         
+        interpol_dict = {'nearest':0, 'bilinear':1, 'biquadratic':2, 'bicubic':3, 'biquartic':4, 'biquintic':5}
+        order = interpol_dict[interpolation]
+
+        device = images.device
+        images = images.detach().cpu().numpy()
+        rotated_images = np.zeros_like(images)
+        fill_value = np.median(images)
+        
+        for i, image in enumerate(images):
+            rotated_images[i] = skimage.transform.rotate(image, angle=degrees[i], order=order, cval=fill_value)
+            #rotated_images[i] = scipy.ndimage.rotate(image, angle=degrees[i], reshape=False, order=order, cval=fill_value)
+        
+        return torch.tensor(rotated_images).to(device)
+
+        '''
         interpol_dict = {'nearest':I.NEAREST, 'bilinear':I.BILINEAR, 'bicubic':I.BICUBIC}
         interpol = interpol_dict[interpolation]
         
         fill_value = float(images.min())
         return torch.cat([transforms.functional.rotate(image[None], float(degree), fill=fill_value, interpolation=interpol)  for image, degree in zip(images, degrees)], dim=0)
+        '''
 
 
     @staticmethod

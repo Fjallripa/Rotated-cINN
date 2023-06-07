@@ -23,7 +23,7 @@ from modules import loss
 
 # Parameters
 ## Model saving
-model_name = "recreation_bilinear"   #! New name for each new training
+model_name = "recreation_biquintic"   #! New name for each new training
 save_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
@@ -53,7 +53,7 @@ train_set = RotatedMNIST(domains=domains,
                          normalize=True, 
                          add_noise=True, 
                          transform = transforms.Lambda(noise_augmentation), 
-                         interpolation='bilinear'
+                         interpolation='biquintic'
                         )
 train_loader = DataLoader(train_set, 
                           batch_size=batch_size, 

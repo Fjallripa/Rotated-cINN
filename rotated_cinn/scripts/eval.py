@@ -24,13 +24,13 @@ random_seed = 1   # For more reproducability
 
 ## Loading and saving
 ### Model loading
-model_name = "recreation_bilinear"
+model_name = "recreation_biquintic"
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 ### Dataset loading or saving
 load_saved_datasets = True   # if False, they will be created in place
 save_datasets = False
-dataset_name = "eval_default_bilinear"
+dataset_name = "eval_default_biquintic"
 dataset_path = path.package_directory + "/datasets"
 if not load_saved_datasets:
     train_domains = [-23, 0, 23, 45, 90, 180]
@@ -544,7 +544,7 @@ def domain_transfer(model:Rotated_cINN, data:torch.Tensor, targets:torch.Tensor,
     """
 
     with torch.no_grad():
-        data_rotated = RotatedMNIST.rotate(data, angles, interpolation='bilinear').to(device)
+        data_rotated = RotatedMNIST.rotate(data, angles, interpolation='biquintic').to(device)
         targets_rotated = torch.cat([RotatedMNIST.deg2cossin(angles).to(device), targets[:, 2:]], dim=1)
         latent_vectors = model.forward(RotatedMNIST._normalize(data), targets)[0]
         data_reconstructed = RotatedMNIST._unnormalize(model.reverse(latent_vectors, targets_rotated)[0].squeeze())
@@ -692,13 +692,13 @@ if __name__ == "__main__":
                                  val_set_size=1000, 
                                  normalize=True, 
                                  add_noise=False, 
-                                 interpolation='bilinear')
+                                 interpolation='biquintic')
         test_set = RotatedMNIST(domains=all_domains, 
                                 train=False, 
                                 seed=random_seed, 
                                 normalize=True, 
                                 add_noise=False, 
-                                interpolation='bilinear')
+                                interpolation='biquintic')
 
     ## Save datasets
     if save_datasets:
