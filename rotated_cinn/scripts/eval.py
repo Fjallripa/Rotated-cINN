@@ -24,19 +24,19 @@ random_seed = 1   # For more reproducability
 
 ## Loading and saving
 ### Model loading
-model_name = "recreation_with_domains"
+model_name = "recreation_bilinear"
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 ### Dataset loading or saving
 load_saved_datasets = True   # if False, they will be created in place
 save_datasets = False
-dataset_name = "eval_default"
+dataset_name = "eval_default_bilinear"
 dataset_path = path.package_directory + "/datasets"
 if not load_saved_datasets:
-    #train_domains = [-23, 0, 23, 45, 90, 180]
-    #test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
-    train_domains = [0]
-    test_domains = [0]
+    train_domains = [-23, 0, 23, 45, 90, 180]
+    test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
+    #train_domains = [0]
+    #test_domains = [0]
     #test_domains = [-23, 23, 45, 90, 180]
 
 ### Saving the evaluation results
@@ -543,16 +543,17 @@ def domain_transfer(model:Rotated_cINN, data:torch.Tensor, targets:torch.Tensor,
     data_reconstructed : torch.Tensor, shape=(N, H, W)
     """
 
-    data_rotated = RotatedMNIST.rotate(data, angles)
-    targets_rotated = torch.cat([RotatedMNIST.deg2cossin(angles), targets[:, 2:]], dim=1)
-    latent_vectors = model.forward(RotatedMNIST._normalize(data), targets)[0]
-    data_reconstructed = RotatedMNIST._unnormalize(model.reverse(latent_vectors, targets_rotated)[0].squeeze())
+    with torch.no_grad():
+        data_rotated = RotatedMNIST.rotate(data, angles, interpolation='bilinear').to(device)
+        targets_rotated = torch.cat([RotatedMNIST.deg2cossin(angles).to(device), targets[:, 2:]], dim=1)
+        latent_vectors = model.forward(RotatedMNIST._normalize(data), targets)[0]
+        data_reconstructed = RotatedMNIST._unnormalize(model.reverse(latent_vectors, targets_rotated)[0].squeeze())
 
     return data_rotated, data_reconstructed
 
 
 
-def plot_transfer_image(rotated:torch.Tensor, reconstructed:torch, angles):
+def plot_transfer_image(rotated:torch.Tensor, reconstructed:torch.Tensor, angles):
     """
     Arguments
     ---------
@@ -573,9 +574,9 @@ def plot_transfer_image(rotated:torch.Tensor, reconstructed:torch, angles):
 
     plt.figure(figsize=(3*3*3, (N*3)//3))
     plt.suptitle(f"Examples of Domain Transfer", y=1.0)
-    rot = rotated.detach().numpy()
-    rec = reconstructed.detach().numpy()
-    dif = (rotated - reconstructed).detach().numpy()
+    rot = rotated.detach().cpu().numpy()
+    rec = reconstructed.detach().cpu().numpy()
+    dif = (rotated - reconstructed).detach().cpu().numpy()
 
     for i, angle in enumerate(angles):
         plt.subplot(N//3, 3*3, 3 * ((i*3)//N + (i*3)%N) + 1)
@@ -623,15 +624,14 @@ def plot_transfer_loss(model:Rotated_cINN, data:torch.Tensor, targets:torch.Tens
     A = len(degree_range)
     transfer_losses = np.zeros(A)
     
-    for i, degree in enumerate(degree_range):
-        with torch.no_grad():
-            print(f"\r    calculating loss for {degree}°", end=" ")
-            degrees = degree * torch.ones(len(data))
-            
-            data_rotated, data_reconstructed = domain_transfer(model, data, targets, degrees)
+    for i, degree in enumerate(degree_range):    
+        print(f"\r    calculating loss for {degree}°", end=" ")
+        degrees = degree * torch.ones(len(data))
+        
+        data_rotated, data_reconstructed = domain_transfer(model, data, targets, degrees)
 
-            l1_loss = torch.mean(torch.abs(data_rotated - data_reconstructed))
-            transfer_losses[i] = l1_loss.detach().numpy()
+        l1_loss = torch.mean(torch.abs(data_rotated - data_reconstructed))
+        transfer_losses[i] = l1_loss.detach().cpu().numpy()
     print("\r")
 
 
@@ -676,37 +676,33 @@ if __name__ == "__main__":
     cinn.eval()
 
     ## Load datasets
-    print("Prep: Loading training and test datasets")
-    if load_saved_datasets:
-        # Load saved datasets
+    if load_saved_datasets:   # Load saved datasets
+        print(f"Prep: Loading training and test datasets '{dataset_name}'")
         train_set = torch.load(f"{dataset_path}/train_{dataset_name}.pt")
         test_set = torch.load(f"{dataset_path}/test_{dataset_name}.pt")
         train_domains = train_set.domains
         all_domains = test_set.domains
         test_domains = sorted(set(all_domains) - set(train_domains))   # the domains that are not training domains
-    else:
-        # Create new datasets
+    else:   # Create new datasets
+        print("Prep: Creating training and test datasets")
         all_domains = sorted(set(train_domains) | set(test_domains))   # all unique angles, sorted
-        train_set = RotatedMNIST(domains=train_domains, train=True, seed=random_seed, val_set_size=0, normalize=False, add_noise=False)
-        test_set = RotatedMNIST(domains=all_domains, train=False, seed=random_seed, normalize=False, add_noise=False)
-        
-    """
-    ### Shorten datasets
-    new_length = 1000
-
-    train_set.data = train_set.data[:new_length]
-    train_set.targets = train_set.targets[:new_length]
-    train_set.class_labels = train_set.class_labels[:new_length]
-    train_set.domain_labels = train_set.domain_labels[:new_length] 
-    
-    test_set.data = test_set.data[:new_length]
-    test_set.targets = test_set.targets[:new_length]
-    test_set.class_labels = test_set.class_labels[:new_length]
-    test_set.domain_labels = test_set.domain_labels[:new_length] 
-    """
+        train_set = RotatedMNIST(domains=train_domains, 
+                                 train=True, 
+                                 seed=random_seed, 
+                                 val_set_size=1000, 
+                                 normalize=True, 
+                                 add_noise=False, 
+                                 interpolation='bilinear')
+        test_set = RotatedMNIST(domains=all_domains, 
+                                train=False, 
+                                seed=random_seed, 
+                                normalize=True, 
+                                add_noise=False, 
+                                interpolation='bilinear')
 
     ## Save datasets
     if save_datasets:
+        print(f"Prep: Saving training and test datasets '{dataset_name}'")
         torch.save(train_set, f"{dataset_path}/train_{dataset_name}.pt")
         torch.save(test_set, f"{dataset_path}/test_{dataset_name}.pt")
     
@@ -759,13 +755,20 @@ if __name__ == "__main__":
     
     # Domain Transfer
     ## Creating domain transfer examples
+    print("\nEval: Domain Transfer: Comparing how well model-rotated images agree with directly rotated images")
     test_mnist = torch.load(f"{dataset_path}/test_eval_og_mnist.pt")
     data, targets, *_ = test_mnist[:100]
+    data, targets = data.to(device), targets.to(device)
     interval = 15  # degrees
     angles = torch.tensor(range(-180, 180, interval))
     
+    print("  Creating Domain Transfer example images")
     drot, drec = domain_transfer(cinn, data[:360//interval], targets[:360//interval], angles)
     plot_transfer_image(drot, drec, angles)
 
     ## Measuring domain transfer loss over all angles
+    print("  Calculating the L1 loss for all degrees")
     plot_transfer_loss(cinn, data, targets, 1, train_domains, test_domains)
+
+
+    print("")

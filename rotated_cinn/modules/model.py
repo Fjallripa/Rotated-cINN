@@ -24,27 +24,20 @@ class Rotated_cINN(nn.Module):
     The former is the rotation angle as a cos, sin pair and the latter is a one-hot representation of the digit.
     '''
     
-    def __init__(self):
+    def __init__(self, init_identity=False):
         super().__init__()
+
+        self.init_identity = init_identity
 
         # Build network
         self.cinn = self.build_inn()
-
-        # Random initialization of parameters
-            #? Why this custom initialization? Aren't there standardized torch solutions out there?
         self.trainable_parameters = [p for p in self.cinn.parameters() if p.requires_grad]
-        for p in self.trainable_parameters:
-            p.data = 0.01 * torch.randn_like(p)
-
+        if not self.init_identity:
+            for p in self.trainable_parameters:
+                p.data = 0.01 * torch.randn_like(p)
+            
 
     def build_inn(self):
-
-        def subnet(ch_in, ch_out):
-            '''the neural network inside the coupling block'''
-            return nn.Sequential(nn.Linear(ch_in, 512),
-                                 nn.ReLU(),
-                                 nn.Linear(512, ch_out))
-
         nodes = []   # list of freia Nodes, analagous to the nn.Sequential list of pytorch Modules
         cond = Ff.ConditionNode(12)  # special node providing the external condition for the subnet
 
@@ -54,14 +47,13 @@ class Rotated_cINN(nn.Module):
         nodes.append(Ff.Node(nodes[-1], Fm.Flatten, {}))   # just flattens the input image
 
         # Creating an INN out of 20 coupling blocks
+        subnet = lambda ch_in, ch_out: self.subnet(ch_in, ch_out, init_identity=self.init_identity)
         for k in range(20):
             nodes.append(Ff.Node(nodes[-1], Fm.PermuteRandom , {'seed':k}))
-                # In one coupling block only half of the dimensions get transformed. 
-                # Fixed permutations between blocks ensures that all the dimensions get transformed similarly often.
-                # Here 10 times on average.
             nodes.append(Ff.Node(nodes[-1], Fm.GLOWCouplingBlock,
                                  {'subnet_constructor':subnet, 'clamp':1.0},
                                  conditions=cond))
+                # The GLOWCouplingBlock uses two subnets.
 
         # Output nodes
         nodes.extend([cond, Ff.OutputNode(nodes[-1])])
@@ -69,6 +61,24 @@ class Rotated_cINN(nn.Module):
         # Full network
         return Ff.ReversibleGraphNet(nodes, verbose=False)
 
+
+    @staticmethod
+    def subnet(ch_in, ch_out, init_identity=False):
+        '''the neural network inside the coupling block'''
+
+        sub_net = nn.Sequential(nn.Linear(ch_in, 512),
+                                nn.ReLU(),
+                                nn.Linear(512, ch_out))
+        
+        if init_identity:
+            # Initializing parameters -- last layer initialized to 0.
+            nn.init.xavier_normal_(sub_net[0].weight)
+            nn.init.zeros_(sub_net[0].bias)
+            nn.init.zeros_(sub_net[2].weight)
+            nn.init.zeros_(sub_net[2].bias)
+            
+        return sub_net
+    
 
 
     def forward(self, x:torch.Tensor, c:torch.Tensor, jac:bool=True) -> tuple[torch.Tensor]:

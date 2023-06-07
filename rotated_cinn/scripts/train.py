@@ -23,7 +23,7 @@ from modules import loss
 
 # Parameters
 ## Model saving
-model_name = "test_gpu"   #! New name for each new training
+model_name = "recreation_bilinear"   #! New name for each new training
 save_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
@@ -42,18 +42,33 @@ noise_augmentation = lambda data: data + 0.08 * torch.randn_like(data)
 # Main code
 ## set up model etc.
 t_start = time()
+print(f"Training the model '{model_name}'\n")
 print("Setting up the model, data loader, etc...")
 
-cinn = Rotated_cINN().to(device)
-train_set = RotatedMNIST(domains=domains, train=True, seed=random_seed, val_set_size=1000, normalize=True, add_noise=False, transform = transforms.Lambda(noise_augmentation))
-train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+cinn = Rotated_cINN(init_identity=False).to(device)
+train_set = RotatedMNIST(domains=domains, 
+                         train=True, 
+                         seed=random_seed, 
+                         val_set_size=1000, 
+                         normalize=True, 
+                         add_noise=True, 
+                         transform = transforms.Lambda(noise_augmentation), 
+                         interpolation='bilinear'
+                        )
+train_loader = DataLoader(train_set, 
+                          batch_size=batch_size, 
+                          shuffle=True, 
+                          num_workers=4, 
+                          pin_memory=True, 
+                          drop_last=True
+                         )
 optimizer = torch.optim.Adam(cinn.trainable_parameters, lr=learning_rate, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
 
 val_data = train_set.val.data.to(device)
 val_targets = train_set.val.targets.to(device)
 
-print(f"Setup time: {time() - t_start:.1f} s")
+print(f"Setup time: {time() - t_start:.1f}s")
 print("")
 print('Epoch\tBatch/Total \tTime \ttraining loss \tval. loss \tlearning rate')
     # Epoch:         number of walks through the whole training set
@@ -100,6 +115,7 @@ for epoch in range(N_epochs):
     scheduler.step()   # update learning rate
 print("")
 print("Training complete!")
+print(f"total training time: {(time() - t_start)/60:.0f}min {(time() - t_start)%60:.0f}s")
 print("")
 
 ## save trained model

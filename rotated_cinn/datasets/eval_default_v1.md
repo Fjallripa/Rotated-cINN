@@ -1,6 +1,7 @@
-# Steps to recreate both eval_default datasets
+# Steps to recreate both eval_default_v1 datasets
 
 created on version 1.2
+Note: 'data.py' has since been changed. These recreation steps will result in a slightly different dataset due to numerical inaccuracies in the old version of RotatedMNISt.deg2sincos().
 
 ```python
 random_seed = 1

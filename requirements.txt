@@ -10,10 +10,10 @@ jupyterlab 3.5.3        (includes Jupyter Notebook)
 
 freia 0.2               (via pip)
 
-numpy 1.23.5
+numpy 1.23.5			(in scikit-image)
 scikit-learn 1.2.2      (includes scipy)
 scikit-image 0.19.3
-pillow 9.4.0
+pillow 9.4.0            (in scikit-image)
 
 pytorch 2.0.0           (-c pytorch)
 torchvision 0.15.0      (-c pytorch)
@@ -22,12 +22,12 @@ If on CPU:
 If on Nvidia GPU: 
 	pytorch-cuda 11.8   (-c nvidia)
 
-matplotlib 3.7.1
+seaborn 0.12.2          (includes pandas)
+matplotlib 3.7.1		(in seaborn)
 visdom 0.2.4            (-c conda-forge)
 tqdm 4.65.0
 
 
 
 # Experimental (may be temporary)
-seaborn 0.12.2          (includes pandas)
 lightning-trainable 0.2.0  (via https://github.com/LarsKue/lightning-trainable)

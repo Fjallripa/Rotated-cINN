@@ -32,13 +32,22 @@ class DomainMNIST(Dataset):
 
     '''
 
-    def __init__(self, domains: list[int], normalize: bool=False, add_noise: bool=False, transform=None) -> None:
+    def __init__(self, 
+                 domains: list[int], 
+                 normalize: bool=False, 
+                 add_noise: bool=False, 
+                 transform=None,
+                 interpolation='nearest'
+                ) -> None:
         super().__init__()
 
         # Set attributes
         self.domains = domains
         self.classes = list(range(10))
         self.transform = transform
+
+        ## Rotation
+        self.interpolation=interpolation
 
         ## Normalization
             # If normalize=False (default), then normalize() and unnormalize() won't have any effect on the data.
@@ -98,8 +107,18 @@ class RotatedMNIST(DomainMNIST):
 
     '''
 
-    def __init__(self, domains: list[int], train: bool, val_set_size: int=0, seed: int=None, normalize: bool=False, add_noise: bool=False, transform=None) -> None:
-        super().__init__(domains, normalize=normalize, add_noise=add_noise, transform=transform)
+    def __init__(self, 
+                 domains: list[int], 
+                 train: bool, 
+                 val_set_size: int=0, 
+                 seed: int=None, 
+                 normalize: bool=False, 
+                 add_noise: bool=False, 
+                 transform=None, 
+                 interpolation='nearest'
+                ) -> None:
+        
+        super().__init__(domains, normalize=normalize, add_noise=add_noise, transform=transform, interpolation=interpolation)
 
         # Set attributes
         self.train = train
@@ -137,7 +156,7 @@ class RotatedMNIST(DomainMNIST):
         # Process the images
         ## Rotate the images according to their domain
         rotations = torch.tensor(self.domains)[domain_indices]
-        images_rotated = self.rotate(images, rotations)
+        images_rotated = self.rotate(images, rotations, interpolation=self.interpolation)
         #images_rotated = torch.zeros_like(images)
         #for i in range(len(images_rotated)):
         #    images_rotated[i] = self._rotate(images[i], int(rotations[i]))
@@ -195,7 +214,7 @@ class RotatedMNIST(DomainMNIST):
 
 
     @staticmethod
-    def rotate(images:torch.Tensor, degrees:list | torch.Tensor) -> torch.Tensor:
+    def rotate(images:torch.Tensor, degrees:list | torch.Tensor, interpolation = 'nearest') -> torch.Tensor:
         """
         rotates a batch of 2D images by a list of degrees
 
@@ -213,9 +232,11 @@ class RotatedMNIST(DomainMNIST):
             the nth image is is rotated by the nth degree from the list
         """
         
-
+        interpol_dict = {'nearest':I.NEAREST, 'bilinear':I.BILINEAR, 'bicubic':I.BICUBIC}
+        interpol = interpol_dict[interpolation]
+        
         fill_value = float(images.min())
-        return torch.cat([transforms.functional.rotate(image[None], float(degree), fill=fill_value, interpolation=I.BILINEAR)  for image, degree in zip(images, degrees)], dim=0)
+        return torch.cat([transforms.functional.rotate(image[None], float(degree), fill=fill_value, interpolation=interpol)  for image, degree in zip(images, degrees)], dim=0)
 
 
     @staticmethod
