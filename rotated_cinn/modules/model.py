@@ -24,10 +24,11 @@ class Rotated_cINN(nn.Module):
     The former is the rotation angle as a cos, sin pair and the latter is a one-hot representation of the digit.
     '''
     
-    def __init__(self, init_identity=False):
+    def __init__(self, init_identity=False, subnet=None):
         super().__init__()
 
         self.init_identity = init_identity
+        self.subnet = subnet
 
         # Build network
         self.cinn = self.build_inn()
@@ -47,7 +48,7 @@ class Rotated_cINN(nn.Module):
         nodes.append(Ff.Node(nodes[-1], Fm.Flatten, {}))   # just flattens the input image
 
         # Creating an INN out of 20 coupling blocks
-        subnet = lambda ch_in, ch_out: self.subnet(ch_in, ch_out, init_identity=self.init_identity)
+        subnet = lambda ch_in, ch_out: self._subnet(ch_in, ch_out)
         for k in range(20):
             nodes.append(Ff.Node(nodes[-1], Fm.PermuteRandom , {'seed':k}))
             nodes.append(Ff.Node(nodes[-1], Fm.GLOWCouplingBlock,
@@ -62,15 +63,28 @@ class Rotated_cINN(nn.Module):
         return Ff.ReversibleGraphNet(nodes, verbose=False)
 
 
-    @staticmethod
-    def subnet(ch_in, ch_out, init_identity=False):
+    def _subnet(self, ch_in, ch_out):
         '''the neural network inside the coupling block'''
-
-        sub_net = nn.Sequential(nn.Linear(ch_in, 512),
-                                nn.ReLU(),
-                                nn.Linear(512, ch_out))
+        if self.subnet == None or self.subnet == 'original':
+            sub_net = nn.Sequential(nn.Linear(ch_in, 512),
+                                    nn.ReLU(),
+                                    nn.Linear(512, ch_out))
+        elif self.subnet == 'og_broad':
+            sub_net = nn.Sequential(nn.Linear(ch_in, 1024),
+                                    nn.ReLU(),
+                                    nn.Linear(1024, ch_out))
+        elif self.subnet == 'og_two_deeper':
+            sub_net = nn.Sequential(nn.Linear(ch_in, 1024),
+                                    nn.ReLU(),
+                                    nn.Linear(1024, 1024),
+                                    nn.ReLU(),
+                                    nn.Linear(1024, 1024),
+                                    nn.ReLU(),
+                                    nn.Linear(1024, ch_out))
+        else:
+            raise ValueError(f"The subnet '{self.subnet}' is not implemented.")
         
-        if init_identity:
+        if self.init_identity:
             # Initializing parameters -- last layer initialized to 0.
             nn.init.xavier_normal_(sub_net[0].weight)
             nn.init.zeros_(sub_net[0].bias)

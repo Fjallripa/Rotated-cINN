@@ -27,7 +27,9 @@ from modules import loss
 
 # Parameters
 ## Model saving
-model_name = "new_initialization_2"   #! New name for each new training
+model_name = "v125_80_epochs"   #! New name for each new training
+model_subnet = 'og_two_deeper'
+model_init_identity = False
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 device = 'cuda'  if torch.cuda.is_available() else  'cpu'
@@ -51,7 +53,7 @@ if not load_dataset:
 
 
 ## Training settings
-N_epochs = 60
+N_epochs = 80
 batch_size = 256
 learning_rate = 5e-4
 loss_function = loss.neg_loglikelihood
@@ -70,7 +72,9 @@ print("")
 
 ### Create new model
 print("Prep: Create new model")
-cinn = Rotated_cINN(init_identity=True).to(device)
+cinn = Rotated_cINN(init_identity=model_init_identity, 
+                    subnet=model_subnet,
+                   ).to(device)
 
 
 ### Load or create dataset
@@ -112,7 +116,10 @@ train_loader = DataLoader(train_set,
                           drop_last=True
                          )
 optimizer = torch.optim.Adam(cinn.trainable_parameters, lr=learning_rate, weight_decay=1e-5)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, N_epochs, eta_min=5e-6)
+#scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40, 60, 80], gamma=1/np.sqrt(10))
+#scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30, 55], gamma=0.1)
+#scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
 
 print(f"Prep: time = {time() - t_start:.1f}s")
 print("")

@@ -244,17 +244,8 @@ class RotatedMNIST(DomainMNIST):
         
         for i, image in enumerate(images):
             rotated_images[i] = skimage.transform.rotate(image, angle=degrees[i], order=order, cval=fill_value)
-            #rotated_images[i] = scipy.ndimage.rotate(image, angle=degrees[i], reshape=False, order=order, cval=fill_value)
-        
+            
         return torch.tensor(rotated_images).to(device)
-
-        '''
-        interpol_dict = {'nearest':I.NEAREST, 'bilinear':I.BILINEAR, 'bicubic':I.BICUBIC}
-        interpol = interpol_dict[interpolation]
-        
-        fill_value = float(images.min())
-        return torch.cat([transforms.functional.rotate(image[None], float(degree), fill=fill_value, interpolation=interpol)  for image, degree in zip(images, degrees)], dim=0)
-        '''
 
 
     @staticmethod
@@ -267,6 +258,9 @@ class RotatedMNIST(DomainMNIST):
 
         return tensor_a, tensor_b
     
+
+
+
 
 # Noise augmentation class to be used as a torch.transform
 class AddGaussianNoise(object):

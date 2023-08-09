@@ -19,12 +19,14 @@ from modules import loss
 
 # Parameters
 ## General Settings
-device = 'cuda'  if torch.cuda.is_available() else  'cpu'
+device = 'cpu'
+#device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1   # For more reproducability
 
 ## Loading and saving
 ### Model loading
-model_name = "new_initialization_2"
+model_name = "v125_80_epochs"
+model_subnet = 'og_two_deeper'
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 ### Dataset loading or saving
@@ -71,8 +73,14 @@ def plot_training_losses() -> None:
 
     # Plotting the losses
     plt.title("Training losses")
+    ymax = -np.inf
+    ymin = np.inf
     for loss_name, loss_array in losses.items():
         plt.plot(epochs, loss_array, label=loss_name)
+        ymax = max(ymax, np.max(loss_array[1:]))   
+            # the loss of the first epoch is an outlier and compresses the plotted range of the subsequent epochs to much. It is therefor ignored for setting the uppe limit of the plot.
+        ymin = min(ymin, np.min(loss_array[1:]))
+    plt.ylim((ymin-0.1, ymax+0.1))
     plt.xlabel("epoch")
     plt.legend()
 
@@ -695,7 +703,7 @@ if __name__ == "__main__":
     # Preparation
     ## Load trained model
     print("Prep: Loading model")
-    cinn = Rotated_cINN().to(device)
+    cinn = Rotated_cINN(subnet=model_subnet).to(device)
     state_dict = {k:v for k,v in torch.load(model_path).items() if 'tmp_var' not in k}
     cinn.load_state_dict(state_dict)
     cinn.eval()
@@ -739,7 +747,7 @@ if __name__ == "__main__":
     print("\nEval: Displaying the training losses")
     plot_training_losses()
 
-
+    
     ## Calculate loss for each domain
     print("\nEval: Creating a domain-wise loss plot")
     train_domain_loss = get_per_domain_loss(train_domains, train_set, cinn, samples_per_domain)
