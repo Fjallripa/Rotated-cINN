@@ -713,6 +713,120 @@ def plot_transfer_loss(model:Rotated_cINN, data:torch.Tensor, targets:torch.Tens
 
 
 
+## Classification across Domains
+def classification_accuracy(model, dataset, angle, sample_size = None) -> float:
+    """
+    Arguments
+    ---------
+    model : Rotated_cINN
+        preferrably pre-trained
+    dataset : RotatedMNIST
+        should be unrotated
+    angle : int
+        how many degrees the dataset shoulb be rotated
+    sample_size : None or int
+        how many samples of the dataset are used for the accuracy computation
+
+    Returns
+    -------
+    accuracy : float(0..1)
+        fraction of dataset images that the model classified correctly
+    """
+
+
+    N = len(dataset)  if sample_size == None else  sample_size
+    C = len(dataset.classes)  # number of classes
+    
+
+
+    # Prepare the dataset by rotating it by `angle` degrees. 
+    angles = [angle] * N
+    data, targets = dataset.data[:N], dataset.targets[:N]
+    data_rotated = RotatedMNIST.rotate(data, angles, interpolation='biquintic').to(device)
+    data_rotated = RotatedMNIST._normalize(data_rotated)
+    targets_rotated = torch.cat([RotatedMNIST.deg2cossin(angles).to(device), targets[:, 2:]], dim=1)
+
+
+    # Calculate the loglikelihoods for each class
+    loglikelihoods = torch.zeros((C, N))
+    for c in dataset.classes:
+        print(f"\r   angle: {angle: 4d}°, class: {c}", end="")
+
+        # Create targets for each class
+        class_targets = targets_rotated.detach().clone()
+        class_targets[:, 2:] = torch.eye(C)[c].to(device)
+        
+        # Encode the images
+        z, log_j = model(data_rotated, class_targets)
+        z, log_j = z.cpu().detach(), log_j.cpu().detach()
+        
+        # Calculate the likelihoods
+        normal = distributions.Normal(torch.zeros_like(z), torch.ones_like(z))
+        normal = distributions.Independent(normal, 1)
+        loglikelihood = normal.log_prob(z) + log_j   # log p(x | c), shape=(N)
+        loglikelihoods[c] = loglikelihood
+        
+        
+      
+    # Compute the classification accuracy
+    choices = torch.argmax(loglikelihoods, dim=0)   # classifier label for each domain, shape=(N)
+        # choose the class with the largest loglikelihood (assumes a naive prior of 1/10 per class)
+    return torch.mean(choices == dataset.class_labels[:N], dtype=float)
+
+
+
+def classification_bar_plot(accuracies=list[float], angles=list[int], train_domains=None, test_domains=None) -> None:
+    """
+    plots and saves a diagram that shows the overall classification accuracy of for every domain (rotation angle) in `angles`.
+    
+    Arguments
+    ---------
+    accuracies : list[float], len=len(angles), dtype=float(0..1)
+    angles : list[int]
+        all the rotation angles thath the classification accuracy should be tested for.
+    train_domains : None or list[int]
+        angles to be highlighted as training domains in the plot
+    test_domains : None or list[int]
+        angles to be highlighted as test domains in the plot
+    """ 
+    
+
+    # Create bar plot
+    angles = np.array(sorted(set(angles)))
+    interval = max(1, min(angles[1:] - angles[:-1]))  # minimum angle between domains => bar width
+    degree_range = np.array(range(min(angles), max(angles)+1))
+    
+    plt.figure(figsize=(15, 5))
+    
+    plt.bar(angles, accuracies * 100, width=interval)   # convert from fraction to %
+    ## Highlight accuracies of training and test domains
+    if train_domains != None:
+        i_train = np.argwhere((degree_range[:, None] == np.array(train_domains)[None]).any(1))[:,0]
+        plt.vlines(degree_range[i_train], ymin=0, ymax=100, colors='yellow', label='training domains', linestyles='dashed')
+    if test_domains != None:
+        i_test = np.argwhere((degree_range[:, None] == np.array(test_domains)[None]).any(1))[:,0]
+        plt.vlines(degree_range[i_test], ymin=0, ymax=100, colors='red', label='test domains', linestyles='dashed')
+
+    if train_domains != None or test_domains != None:
+        plt.legend()
+    plt.xlabel("rotation angle [°]")
+    plt.ylabel("[%]")
+    plt.ylim(0, 100)
+    big_ticks = np.arange(0,110, 10)
+    small_ticks = np.arange(0, 100, 10) + 5
+    plt.yticks(ticks=big_ticks, labels=big_ticks, minor=False)
+    plt.yticks(ticks=small_ticks, minor=True)
+    plt.title("total classification accuracy across domains")
+
+    # Save the plot
+    save_name = f"/class_accuracy_barplot"
+    print(f"    Saving plot as {save_name}")
+    torch.save(accuracies, save_path + save_name + ".pt")
+    plt.savefig(save_path + save_name + ".png")
+    plt.show()
+
+
+
 
 
 # Main code
@@ -811,7 +925,7 @@ if __name__ == "__main__":
     print("  Test set and all domains")
     accuracies = classify_classes(test_set, cinn, log_progress=True)
     plot_classification_accuracy(accuracies, test_set.domains, train=False)
-    '''
+    
     
     # Domain Transfer
     ## Creating domain transfer examples
@@ -828,73 +942,17 @@ if __name__ == "__main__":
     ## Measuring domain transfer loss over all angles
     print("  Calculating the L1 loss for all degrees")
     plot_transfer_loss(cinn, data, targets, 1, train_domains, test_domains)
+    '''
+
+
+    # Classification across Domains
+    ## Calculating total classification accuracies for a range of rotation angles
+    print("\nEval: Classification Domain Transfer: How good is the classifier for different rotation angles?")
+    test_mnist = torch.load(f"{dataset_path}/test_eval_og_mnist.pt", map_location=device)
+    angles = list(range(-179, 181, 1)) # => N = 360
+    accuracies = torch.tensor([classification_accuracy(cinn, test_mnist, angle, sample_size=1000)  for angle in angles])
+    classification_bar_plot(accuracies, angles, train_domains)
 
 
     print("")
-
-
-
-''' # Old Domain Transfer Visualization
-def plot_transfer_image(rotated:torch.Tensor, reconstructed:torch.Tensor, angles):
-    """
-    Arguments
-    ---------
-    data_rotated : torch.Tensor, shape=(N, H, W)
-    data_reconstructed : torch.Tensor, shape=(N, H, W)
-    angles : list, shape=(N)
-
-    N = number of angles
-    H, W = height and width of image
-    """
-
-    def show_range(img:np.ndarray) -> None:
-        plt.text( 1, 27, f"{np.min(img): 4.1f}", color='white', fontsize=10)
-        plt.text(12, 27, f"{np.median(img): 4.1f}", color='white', fontsize=10)
-        plt.text(23, 27, f"{np.max(img): 4.1f}", color='white', fontsize=10)
     
-    N = len(angles)
-
-    plt.figure(figsize=(3*3*3, (N*3)//3))
-    plt.suptitle(f"Examples of Domain Transfer", y=1.0)
-    rot = rotated.detach().cpu().numpy()
-    rec = reconstructed.detach().cpu().numpy()
-    dif = (rotated - reconstructed).detach().cpu().numpy()
-
-    for i, angle in enumerate(angles):
-        plt.subplot(N//3, 3*3, 3 * ((i*3)//N + (i*3)%N) + 1)
-        plt.imshow(rot[i])
-        plt.text(20, 2, f"{angle: 3d}°", color='white', fontweight='bold', fontsize=15)
-        plt.axis('off')
-        
-        plt.subplot(N//3, 3*3, 3 * ((i*3)//N + (i*3)%N) + 2)
-        plt.imshow(rec[i])
-        show_range(rec[i])
-        plt.axis('off')
-        
-        plt.subplot(N//3, 3*3, 3 * ((i*3)//N + (i*3)%N) + 3)
-        plt.imshow(dif[i])
-        show_range(dif[i])
-        plt.axis('off')
-
-    plt.tight_layout()
-    
-    # Save the plot
-    save_name = f"/domain_transfer_examples.png"
-    print(f"    Saving plot as {save_name}")
-    plt.savefig(save_path + save_name)
-    plt.show()
-
-
-## Creating domain transfer examples
-print("\nEval: Domain Transfer: Comparing how well model-rotated images agree with directly rotated images")
-test_mnist = torch.load(f"{dataset_path}/test_eval_og_mnist.pt")
-data, targets, *_ = test_mnist[:100]
-data, targets = data.to(device), targets.to(device)
-interval = 15  # degrees
-angles = torch.tensor(range(-180, 180, interval))
-
-print("  Creating Domain Transfer example images")
-drot, drec = domain_transfer(cinn, data[:360//interval], targets[:360//interval], angles)
-plot_transfer_image(drot, drec, angles)
-
-'''
