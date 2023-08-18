@@ -19,27 +19,30 @@ from modules import loss
 
 # Parameters
 ## General Settings
-device = 'cpu'
-#device = 'cuda'  if torch.cuda.is_available() else  'cpu'
+device = 'cuda'  if torch.cuda.is_available() else  'cpu'
 random_seed = 1   # For more reproducability
 
 ## Loading and saving
 ### Model loading
-model_name = "v125_80_epochs"
+model_name = "v125_72_deg_spacing"
 model_subnet = 'og_two_deeper'
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
 
 ### Dataset loading or saving
 load_saved_datasets = True   # if False, they will be created in place
 save_datasets = False
-dataset_name = "eval_default_biquintic"
+dataset_name = "eval_72_deg_spacing"
 dataset_path = path.package_directory + "/datasets"
 if not load_saved_datasets:
-    train_domains = [-23, 0, 23, 45, 90, 180]
-    test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
+    #train_domains = [-23, 0, 23, 45, 90, 180]
+    #test_domains = [-135, -90, -45, 10, 30, 60, 75, 135]
     #train_domains = [0]
     #test_domains = [0]
     #test_domains = [-23, 23, 45, 90, 180]
+    #train_domains = [-60, -30, 0, 30, 60]   # 30° spacing of 5 domains
+    #test_domains = [15, 45, 75, 90, 105, 120, 150, 180]
+    train_domains = [-144, -72, 0, 72, 144]   # 72° spacing of 5 domains
+    test_domains = [-108, -54, -36, -18, 18, 36, 54, 108, 180]
 
 ### Saving the evaluation results
 save_analysis = True
@@ -758,7 +761,7 @@ def classification_accuracy(model, dataset, angle, sample_size = None) -> float:
         
         # Encode the images
         z, log_j = model(data_rotated, class_targets)
-        z, log_j = z.cpu().detach(), log_j.cpu().detach()
+        #z, log_j = z.cpu().detach(), log_j.cpu().detach()
         
         # Calculate the likelihoods
         normal = distributions.Normal(torch.zeros_like(z), torch.ones_like(z))
@@ -771,7 +774,7 @@ def classification_accuracy(model, dataset, angle, sample_size = None) -> float:
     # Compute the classification accuracy
     choices = torch.argmax(loglikelihoods, dim=0)   # classifier label for each domain, shape=(N)
         # choose the class with the largest loglikelihood (assumes a naive prior of 1/10 per class)
-    return torch.mean(choices == dataset.class_labels[:N], dtype=float)
+    return torch.mean(choices == dataset.class_labels[:N].to('cpu'), dtype=float)
 
 
 
@@ -875,7 +878,7 @@ if __name__ == "__main__":
         torch.save(train_set, f"{dataset_path}/train_{dataset_name}.pt")
         torch.save(test_set, f"{dataset_path}/test_{dataset_name}.pt")
     
-    '''
+    #'''
     # Calculating losses
     
     ## Show the training losses
@@ -920,7 +923,7 @@ if __name__ == "__main__":
     print("  Training set and training domains")
     accuracies = classify_classes(train_set, cinn, log_progress=True)
     plot_classification_accuracy(accuracies, train_set.domains, train=True)
-    
+    #'''
     ## Test set
     print("  Test set and all domains")
     accuracies = classify_classes(test_set, cinn, log_progress=True)
@@ -942,7 +945,17 @@ if __name__ == "__main__":
     ## Measuring domain transfer loss over all angles
     print("  Calculating the L1 loss for all degrees")
     plot_transfer_loss(cinn, data, targets, 1, train_domains, test_domains)
-    '''
+    #'''
+
+
+    # Classification across Domains
+    ## Calculating total classification accuracies for a range of rotation angles
+    print("\nEval: Classification Domain Transfer: How good is the classifier for different rotation angles?")
+    test_mnist = torch.load(f"{dataset_path}/test_eval_og_mnist.pt", map_location=device)
+    angles = list(range(-179, 181, 1)) # => N = 360
+    accuracies = torch.tensor([classification_accuracy(cinn, test_mnist, angle, sample_size=1000)  for angle in angles])
+    classification_bar_plot(accuracies, angles, train_domains)
+
 
 
     # Classification across Domains
@@ -955,4 +968,3 @@ if __name__ == "__main__":
 
 
     print("")
-    

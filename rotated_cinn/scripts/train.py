@@ -27,7 +27,7 @@ from modules import loss
 
 # Parameters
 ## Model saving
-model_name = "v125_80_epochs"   #! New name for each new training
+model_name = "v125_72_deg_spacing"   #! New name for each new training
 model_subnet = 'og_two_deeper'
 model_init_identity = False
 model_path = path.package_directory + f"/trained_models/{model_name}.pt"
@@ -45,11 +45,12 @@ path.makedir(analysis_path)
 ## Dataset loading or saving
 load_dataset = True   # if False, it will be created in place
 save_dataset = False
-dataset_name = "train_default_biquintic"
+dataset_name = "train_72_deg_spacing"
 dataset_path = path.package_directory + "/datasets"
 if not load_dataset:
-    domains = [-23, 0, 23, 45, 90, 180]
-    #domains = [0]
+    #domains = [-23, 0, 23, 45, 90, 180]   # default
+    #domains = [0]   # og. cinn (no domain transfer learnt)
+    domains = [-144, -72, 0, 72, 144]   # 72° spacing of 5 domains
 
 
 ## Training settings
