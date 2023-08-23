@@ -5,8 +5,8 @@ temp/*
 reference_code/mnist_minimal_example/images/*
 reference_code/mnist_minimal_example/output/*
 
-rotated_cinn/trained_models/*.pt
-rotated_cinn/analysis/*
-rotated_cinn/datasets/*.pt
+trained_models/*.pt
+analysis/*
+datasets/*.pt
 
 **/MNIST/raw/*
