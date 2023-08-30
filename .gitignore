@@ -7,6 +7,7 @@ reference_code/mnist_minimal_example/output/*
 
 trained_models/*.pt
 analysis/*
+!analysis/domain_transfer_series
 datasets/*.pt
 
 **/MNIST/raw/*
